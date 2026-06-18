@@ -1,0 +1,3 @@
+- [Expo 53 web SPA mode](expo53-web-spa.md) — expo-router v5 + React 19 SSR fails with `React.use not a function`; fix is `"output": "single"` in app.json web config.
+- [Haptics web guard](haptics-web.md) — expo-haptics throws on web even with polyfill if version is old; always wrap calls in Platform.OS check via lib/haptics.ts.
+- [Expo SDK 54 upgrade quirks](expo54-upgrade.md) — reanimated v4 needs react-native-worklets peer dep + changed babel plugin; expo-router v6 needs expo-linking installed separately.

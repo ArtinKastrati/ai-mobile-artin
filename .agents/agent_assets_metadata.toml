@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "iGTPTxipbrq4UGjDSpSys"
+uri = "file://qr-expo.png"
+type = "image"
+title = "QR Code — Hap me Expo Go në iPhone"

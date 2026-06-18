@@ -1,0 +1,95 @@
+FoodRush — AI Prompts Log
+========================
+Date: June 17, 2026
+Model: Replit Agent
+
+---
+
+SESSION 1 — Project Import & Environment Setup
+-----------------------------------------------
+
+PROMPT 1:
+"Began migrating the import from Replit Agent to Replit environment, created a file to track
+the progress of the import, remember to update this file when things are updated. Make sure
+you mark all of the items as done using [x] in .local/state/replit/agent/progress_tracker.md."
+
+Translation: English
+
+Actions taken:
+- Explored project structure (FoodRush — React Native / Expo food delivery app)
+- Installed npm dependencies (742 packages)
+- Configured workflow to use local expo binary on port 5000
+- Requested EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY secrets
+- Identified incorrect EXPO_PUBLIC_SUPABASE_URL value (was a publishable key, not a URL)
+- Re-requested correct Supabase project URL from user
+- Restarted workflow after secrets were added
+- Confirmed app running successfully (FoodRush Discover screen visible)
+- Marked all progress tracker items as complete
+
+---
+
+SESSION 2 — GitHub README, AI Log & Accounts/Roles System
+----------------------------------------------------------
+
+PROMPT 2:
+"a mundesh te vendosesh ne readme ne github poashtu nje file me emrin AI-log.txt ketu vendosi
+promptat e perdorur, dhe mundemi te fillojm me rregullimin e accounts si pershembull te mundemi
+te hapim nje acc poashtu edhe te behemi login me ate acc, duhet te ket role si klient i rregullt
+poashtu te ket nje account si admin per mua, te gjitha te jene te integrur online qe te ruhen"
+
+Translation (Albanian → English):
+"Can you put a README on GitHub, also a file named AI-log.txt and put the prompts used in it,
+and can we start fixing accounts — for example we can open an account and also login with that
+account, it should have a role as a regular client, also have an admin account for me,
+everything should be integrated online so they are saved."
+
+Actions taken:
+- Created README.md with full project documentation and Supabase setup SQL
+- Created this AI-log.txt file
+- Added profiles table support to Supabase with client/admin roles
+- Updated AuthContext to fetch user role from profiles table
+- Updated Profile screen to show role badge (CLIENT / ADMIN)
+- Added Admin Panel button in profile screen (visible to admins only)
+- Created app/admin.tsx — admin dashboard with user list and stats
+- Added admin screen to the navigation stack in app/_layout.tsx
+- Provided SQL for Supabase setup (profiles table, RLS policies, trigger)
+- Provided SQL to promote a user to admin role
+
+---
+
+SESSION 3 — Expo SDK Upgrade from 53 to 54
+-------------------------------------------
+
+PROMPT 3:
+"se pari para se te vazhdojm me opcione tjera mundesh ta besh ne versionin sdk 54.0.0 apo
+cili eshte me i riu sepse nuk po me funksionon ne iphone"
+
+Translation (Albanian → English):
+"Before we continue with other options, can you upgrade to SDK 54.0.0 or the latest version
+because it's not working on my iPhone."
+
+Actions taken:
+- Checked available SDK versions (latest stable: expo@54.0.35)
+- Used `expo install --fix` to get the exact compatible versions for all packages
+- Updated package.json with all SDK 54 compatible versions:
+    expo ~54.0.35, react-native 0.81.5, expo-router ~6.0.24,
+    react-native-reanimated ~4.1.1, react-native-gesture-handler ~2.28.0,
+    react ~19.1.0, typescript ~5.9.2, and more
+- Did clean reinstall (removed node_modules + package-lock.json) to fix corrupt modules
+- Fixed reanimated v4 breaking change: babel plugin changed from
+    'react-native-reanimated/plugin' → 'react-native-worklets/plugin'
+- Installed react-native-worklets@0.8.3 (required peer dep for reanimated v4)
+- Installed missing expo-linking (required by expo-router v6)
+- Restarted workflow with --clear flag to rebuild Metro bundler cache
+- Confirmed app running successfully on SDK 54
+
+Key lessons from this upgrade:
+- reanimated v4 requires react-native-worklets as a separate package
+- expo-router v6 requires expo-linking installed separately
+- npm install --legacy-peer-deps needed due to @types/react peer dep conflict
+- Clean node_modules reinstall needed after major SDK upgrade
+- Metro must be restarted with --clear after babel.config.js changes
+
+---
+
+END OF LOG
