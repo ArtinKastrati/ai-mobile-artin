@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -11,8 +11,81 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { CartProvider } from '@/context/CartContext';
 import { AuthProvider } from '@/context/AuthContext';
 import { queryClient } from '@/lib/queryClient';
+import { PreferencesProvider, usePreferences } from '@/context/PreferencesContext';
+import { DataProvider, useData } from '@/context/DataContext';
+import { useColorScheme } from 'react-native';
+import { NotificationProvider, useNotification } from '@/context/NotificationContext';
+import { haptics } from '@/lib/haptics';
 
 SplashScreen.preventAutoHideAsync();
+
+function AppContent() {
+  const systemScheme = useColorScheme();
+  let statusStyle: 'dark' | 'light' = 'dark';
+  try {
+    const { theme } = usePreferences();
+    const activeTheme = theme === 'system' ? (systemScheme || 'light') : theme;
+    statusStyle = activeTheme === 'dark' ? 'light' : 'dark';
+  } catch (e) {
+    statusStyle = systemScheme === 'dark' ? 'light' : 'dark';
+  }
+
+  const { orders } = useData();
+  const { showNotification } = useNotification();
+  const prevOrdersRef = useRef<any[]>([]);
+
+  useEffect(() => {
+    if (prevOrdersRef.current.length === 0) {
+      prevOrdersRef.current = orders;
+      return;
+    }
+
+    orders.forEach((order) => {
+      const prev = prevOrdersRef.current.find((o) => o.id === order.id);
+      if (prev && prev.status !== order.status) {
+        haptics.notificationWarning();
+        let title = 'Order Update';
+        let message = `Your order status is now: ${order.status}`;
+        if (order.status === 'preparing') {
+          title = '🍳 Cooking Food';
+          message = 'The restaurant is now preparing your delicious meal!';
+        } else if (order.status === 'on_the_way') {
+          title = '🚴 Rider Dispatched';
+          message = 'Your rider is delivering your order. Track it in real-time!';
+        } else if (order.status === 'delivered') {
+          title = '✅ Order Delivered';
+          message = 'Enjoy your meal! Rate your experience to help us improve.';
+        } else if (order.status === 'cancelled') {
+          title = '❌ Order Cancelled';
+          message = 'Your order has been cancelled.';
+        }
+        showNotification(title, message);
+      }
+    });
+
+    prevOrdersRef.current = orders;
+  }, [orders, showNotification]);
+
+  return (
+    <KeyboardProvider>
+      <StatusBar style={statusStyle} />
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="restaurant/[id]" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="checkout" options={{ animation: 'slide_from_bottom', presentation: 'modal' }} />
+        <Stack.Screen name="auth" options={{ animation: 'slide_from_bottom', presentation: 'modal' }} />
+        <Stack.Screen name="notifications" options={{ animation: 'slide_from_bottom', presentation: 'modal' }} />
+        <Stack.Screen name="admin" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="profile/addresses" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="orders/[id]" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="profile/edit" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="profile/payment" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="profile/help" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="profile/legal" options={{ animation: 'slide_from_right' }} />
+      </Stack>
+    </KeyboardProvider>
+  );
+}
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
@@ -35,20 +108,17 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <ErrorBoundary>
           <QueryClientProvider client={queryClient}>
-            <AuthProvider>
-              <CartProvider>
-                <KeyboardProvider>
-                  <StatusBar style="dark" />
-                  <Stack screenOptions={{ headerShown: false }}>
-                    <Stack.Screen name="(tabs)" />
-                    <Stack.Screen name="restaurant/[id]" options={{ animation: 'slide_from_right' }} />
-                    <Stack.Screen name="checkout" options={{ animation: 'slide_from_bottom', presentation: 'modal' }} />
-                    <Stack.Screen name="auth" options={{ animation: 'slide_from_bottom', presentation: 'modal' }} />
-                    <Stack.Screen name="admin" options={{ animation: 'slide_from_right' }} />
-                  </Stack>
-                </KeyboardProvider>
-              </CartProvider>
-            </AuthProvider>
+            <PreferencesProvider>
+              <DataProvider>
+                <NotificationProvider>
+                  <AuthProvider>
+                    <CartProvider>
+                      <AppContent />
+                    </CartProvider>
+                  </AuthProvider>
+                </NotificationProvider>
+              </DataProvider>
+            </PreferencesProvider>
           </QueryClientProvider>
         </ErrorBoundary>
       </SafeAreaProvider>

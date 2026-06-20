@@ -4,6 +4,7 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useColors } from '@/hooks/useColors';
 import { Restaurant } from '@/data/mockData';
+import { usePreferences } from '@/context/PreferencesContext';
 
 type Props = {
   restaurant: Restaurant;
@@ -13,6 +14,7 @@ type Props = {
 
 export function RestaurantCard({ restaurant, onPress, featured }: Props) {
   const colors = useColors();
+  const { t } = usePreferences();
 
   return (
     <TouchableOpacity
@@ -28,7 +30,7 @@ export function RestaurantCard({ restaurant, onPress, featured }: Props) {
       />
       {restaurant.deliveryFee === 0 && (
         <View style={[styles.badge, { backgroundColor: colors.success }]}>
-          <Text style={styles.badgeText}>Free Delivery</Text>
+          <Text style={styles.badgeText}>{t('restaurant.freeDelivery')}</Text>
         </View>
       )}
       <View style={styles.info}>
@@ -59,7 +61,7 @@ export function RestaurantCard({ restaurant, onPress, featured }: Props) {
             <>
               <View style={styles.dot} />
               <Text style={[styles.metaText, { color: colors.muted }]}>
-                ${restaurant.deliveryFee.toFixed(2)} delivery
+                {t('restaurant.delivery', { fee: '$' + restaurant.deliveryFee.toFixed(2) })}
               </Text>
             </>
           )}

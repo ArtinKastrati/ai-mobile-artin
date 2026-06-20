@@ -15,6 +15,7 @@ import { useColors } from '@/hooks/useColors';
 import { useCart } from '@/context/CartContext';
 import { router } from 'expo-router';
 import { haptics } from '@/lib/haptics';
+import { usePreferences } from '@/context/PreferencesContext';
 
 type Props = {
   visible: boolean;
@@ -23,6 +24,7 @@ type Props = {
 
 export function CartSheet({ visible, onClose }: Props) {
   const colors = useColors();
+  const { t } = usePreferences();
   const insets = useSafeAreaInsets();
   const { items, restaurant, updateQuantity, total } = useCart();
 
@@ -39,73 +41,93 @@ export function CartSheet({ visible, onClose }: Props) {
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         <View style={[styles.header, { paddingTop: Platform.OS === 'web' ? 24 : 16 }]}>
-          <Text style={[styles.title, { color: colors.foreground }]}>Your Cart</Text>
-          <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+          <Text style={[styles.title, { color: colors.foreground }]}>{t('cart.title')}</Text>
+          <TouchableOpacity 
+            onPress={() => {
+              haptics.light();
+              onClose();
+            }} 
+            style={styles.closeBtn}
+          >
             <Ionicons name="close" size={22} color={colors.foreground} />
           </TouchableOpacity>
         </View>
 
         {restaurant && (
           <Text style={[styles.restaurantLabel, { color: colors.muted }]}>
-            from {restaurant.name}
+            {t('cart.from', { name: restaurant.name })}
           </Text>
         )}
 
         <ScrollView style={styles.list} contentContainerStyle={{ paddingBottom: 20 }}>
-          {items.map((item) => (
-            <View key={item.menuItem.id} style={[styles.item, { backgroundColor: colors.card }]}>
-              <Image
-                source={{ uri: item.menuItem.imageUrl }}
-                style={styles.itemImage}
-                contentFit="cover"
-              />
-              <View style={styles.itemInfo}>
-                <Text style={[styles.itemName, { color: colors.foreground }]} numberOfLines={1}>
-                  {item.menuItem.name}
-                </Text>
-                <Text style={[styles.itemPrice, { color: colors.primary }]}>
-                  ${(item.menuItem.price * item.quantity).toFixed(2)}
-                </Text>
+          {items.map((item) => {
+            const modifiersCost = item.selectedModifiers?.reduce((sum, m) => sum + m.price, 0) || 0;
+            const singleItemPrice = item.menuItem.price + modifiersCost;
+            return (
+              <View key={item.id} style={[styles.item, { backgroundColor: colors.card }]}>
+                <Image
+                  source={{ uri: item.menuItem.imageUrl }}
+                  style={styles.itemImage}
+                  contentFit="cover"
+                />
+                <View style={styles.itemInfo}>
+                  <Text style={[styles.itemName, { color: colors.foreground }]} numberOfLines={1}>
+                    {item.menuItem.name}
+                  </Text>
+                  {item.selectedModifiers && item.selectedModifiers.length > 0 && (
+                    <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1, fontFamily: 'Nunito_400Regular' }}>
+                      {item.selectedModifiers.map(m => m.choiceName).join(' · ')}
+                    </Text>
+                  )}
+                  {item.specialInstructions ? (
+                    <Text style={{ fontSize: 11, color: colors.muted, fontStyle: 'italic', marginTop: 1, fontFamily: 'Nunito_400Regular' }} numberOfLines={1}>
+                      "{item.specialInstructions}"
+                    </Text>
+                  ) : null}
+                  <Text style={[styles.itemPrice, { color: colors.primary, marginTop: 4 }]}>
+                    ${(singleItemPrice * item.quantity).toFixed(2)}
+                  </Text>
+                </View>
+                <View style={styles.qtyControl}>
+                  <TouchableOpacity
+                    onPress={() => {
+                      haptics.light();
+                      updateQuantity(item.id, item.quantity - 1);
+                    }}
+                    style={[styles.qtyBtn, { borderColor: colors.border }]}
+                  >
+                    <Ionicons name="remove" size={16} color={colors.foreground} />
+                  </TouchableOpacity>
+                  <Text style={[styles.qty, { color: colors.foreground }]}>{item.quantity}</Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      haptics.light();
+                      updateQuantity(item.id, item.quantity + 1);
+                    }}
+                    style={[styles.qtyBtn, { backgroundColor: colors.primary, borderColor: colors.primary }]}
+                  >
+                    <Ionicons name="add" size={16} color="#fff" />
+                  </TouchableOpacity>
+                </View>
               </View>
-              <View style={styles.qtyControl}>
-                <TouchableOpacity
-                  onPress={() => {
-                    haptics.light();
-                    updateQuantity(item.menuItem.id, item.quantity - 1);
-                  }}
-                  style={[styles.qtyBtn, { borderColor: colors.border }]}
-                >
-                  <Ionicons name="remove" size={16} color={colors.foreground} />
-                </TouchableOpacity>
-                <Text style={[styles.qty, { color: colors.foreground }]}>{item.quantity}</Text>
-                <TouchableOpacity
-                  onPress={() => {
-                    haptics.light();
-                    updateQuantity(item.menuItem.id, item.quantity + 1);
-                  }}
-                  style={[styles.qtyBtn, { backgroundColor: colors.primary, borderColor: colors.primary }]}
-                >
-                  <Ionicons name="add" size={16} color="#fff" />
-                </TouchableOpacity>
-              </View>
-            </View>
-          ))}
+            );
+          })}
         </ScrollView>
 
         <View style={[styles.footer, { paddingBottom: insets.bottom + 16, backgroundColor: colors.card }]}>
           <View style={styles.totals}>
             <View style={styles.totalRow}>
-              <Text style={[styles.totalLabel, { color: colors.muted }]}>Subtotal</Text>
+              <Text style={[styles.totalLabel, { color: colors.muted }]}>{t('checkout.subtotal')}</Text>
               <Text style={[styles.totalValue, { color: colors.foreground }]}>${total.toFixed(2)}</Text>
             </View>
             <View style={styles.totalRow}>
-              <Text style={[styles.totalLabel, { color: colors.muted }]}>Delivery</Text>
+              <Text style={[styles.totalLabel, { color: colors.muted }]}>{t('checkout.deliveryFee')}</Text>
               <Text style={[styles.totalValue, { color: deliveryFee === 0 ? colors.success : colors.foreground }]}>
-                {deliveryFee === 0 ? 'Free' : `$${deliveryFee.toFixed(2)}`}
+                {deliveryFee === 0 ? t('checkout.free') : `$${deliveryFee.toFixed(2)}`}
               </Text>
             </View>
             <View style={[styles.totalRow, styles.grandTotalRow]}>
-              <Text style={[styles.grandLabel, { color: colors.foreground }]}>Total</Text>
+              <Text style={[styles.grandLabel, { color: colors.foreground }]}>{t('checkout.total')}</Text>
               <Text style={[styles.grandValue, { color: colors.primary }]}>${grandTotal.toFixed(2)}</Text>
             </View>
           </View>
@@ -114,7 +136,7 @@ export function CartSheet({ visible, onClose }: Props) {
             style={[styles.checkoutBtn, { backgroundColor: colors.primary }]}
             activeOpacity={0.88}
           >
-            <Text style={styles.checkoutText}>Checkout · ${grandTotal.toFixed(2)}</Text>
+            <Text style={styles.checkoutText}>{t('cart.checkout', { total: '$' + grandTotal.toFixed(2) })}</Text>
           </TouchableOpacity>
         </View>
       </View>

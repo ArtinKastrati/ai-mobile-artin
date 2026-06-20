@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useColors } from '@/hooks/useColors';
 import { Category } from '@/data/mockData';
 import { haptics } from '@/lib/haptics';
+import { usePreferences } from '@/context/PreferencesContext';
 
 type Props = {
   category: Category;
@@ -13,6 +14,7 @@ type Props = {
 
 export function CategoryPill({ category, selected, onPress }: Props) {
   const colors = useColors();
+  const { t } = usePreferences();
 
   const handlePress = () => {
     haptics.selection();
@@ -37,7 +39,7 @@ export function CategoryPill({ category, selected, onPress }: Props) {
         color={selected ? '#fff' : colors.muted}
       />
       <Text style={[styles.label, { color: selected ? '#fff' : colors.foreground }]}>
-        {category.name}
+        {t(`home.categories.${category.id}`)}
       </Text>
     </TouchableOpacity>
   );

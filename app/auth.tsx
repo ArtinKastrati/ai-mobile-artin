@@ -16,42 +16,47 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useColors } from '@/hooks/useColors';
 import { useAuth } from '@/context/AuthContext';
+import { usePreferences } from '@/context/PreferencesContext';
+import { haptics } from '@/lib/haptics';
 
 export default function AuthScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { signIn, signUp } = useAuth();
+  const { t } = usePreferences();
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [focusedField, setFocusedField] = useState<'name' | 'email' | 'password' | null>(null);
 
   const topPadding = Platform.OS === 'web' ? 67 : insets.top;
 
   const handleSubmit = async () => {
     if (!email.trim() || !password.trim()) {
-      Alert.alert('Error', 'Please fill in all fields.');
+      Alert.alert(t('common.error'), t('auth.fillAllFields'));
       return;
     }
+    haptics.heavy();
     setLoading(true);
     try {
       if (mode === 'signin') {
         const { error } = await signIn(email, password);
-        if (error) Alert.alert('Sign In Failed', error);
+        if (error) Alert.alert(t('auth.signInFailed'), error);
         else router.back();
       } else {
         if (!fullName.trim()) {
-          Alert.alert('Error', 'Please enter your full name.');
+          Alert.alert(t('common.error'), t('auth.enterFullName'));
           setLoading(false);
           return;
         }
         const { error } = await signUp(email, password, fullName);
-        if (error) Alert.alert('Sign Up Failed', error);
+        if (error) Alert.alert(t('auth.signUpFailed'), error);
         else {
-          Alert.alert('Account Created', 'Check your email to confirm your account.', [
-            { text: 'OK', onPress: () => router.back() },
+          Alert.alert(t('auth.accountCreated'), t('auth.confirmEmail'), [
+            { text: t('common.ok'), onPress: () => router.back() },
           ]);
         }
       }
@@ -67,7 +72,13 @@ export default function AuthScreen() {
     >
       <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
         <View style={[styles.header, { paddingTop: topPadding + 12 }]}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
+          <TouchableOpacity 
+            onPress={() => {
+              haptics.light();
+              router.back();
+            }} 
+            style={styles.closeBtn}
+          >
             <Ionicons name="close" size={22} color={colors.foreground} />
           </TouchableOpacity>
         </View>
@@ -79,47 +90,74 @@ export default function AuthScreen() {
           </View>
           <Text style={[styles.appName, { color: colors.primary }]}>FoodRush</Text>
           <Text style={[styles.tagline, { color: colors.muted }]}>
-            {mode === 'signin' ? 'Welcome back!' : 'Create your account'}
+            {mode === 'signin' ? t('auth.welcomeBack') : t('auth.createAccount')}
           </Text>
 
           <View style={styles.form}>
             {mode === 'signup' && (
-              <View style={[styles.inputGroup, { borderColor: colors.border, backgroundColor: colors.card }]}>
-                <Ionicons name="person-outline" size={18} color={colors.muted} />
+              <View style={[
+                styles.inputGroup, 
+                { 
+                  borderColor: focusedField === 'name' ? colors.primary : colors.border, 
+                  backgroundColor: colors.card,
+                  borderWidth: focusedField === 'name' ? 1.5 : 1
+                }
+              ]}>
+                <Ionicons name="person-outline" size={18} color={focusedField === 'name' ? colors.primary : colors.muted} />
                 <TextInput
                   style={[styles.input, { color: colors.foreground }]}
-                  placeholder="Full Name"
+                  placeholder={t('auth.fullName')}
                   placeholderTextColor={colors.muted}
                   value={fullName}
                   onChangeText={setFullName}
                   autoCapitalize="words"
+                  onFocus={() => setFocusedField('name')}
+                  onBlur={() => setFocusedField(null)}
                 />
               </View>
             )}
 
-            <View style={[styles.inputGroup, { borderColor: colors.border, backgroundColor: colors.card }]}>
-              <Ionicons name="mail-outline" size={18} color={colors.muted} />
+            <View style={[
+              styles.inputGroup, 
+              { 
+                borderColor: focusedField === 'email' ? colors.primary : colors.border, 
+                backgroundColor: colors.card,
+                borderWidth: focusedField === 'email' ? 1.5 : 1
+              }
+            ]}>
+              <Ionicons name="mail-outline" size={18} color={focusedField === 'email' ? colors.primary : colors.muted} />
               <TextInput
                 style={[styles.input, { color: colors.foreground }]}
-                placeholder="Email"
+                placeholder={t('auth.email')}
                 placeholderTextColor={colors.muted}
                 value={email}
                 onChangeText={setEmail}
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoCorrect={false}
+                onFocus={() => setFocusedField('email')}
+                onBlur={() => setFocusedField(null)}
               />
             </View>
 
-            <View style={[styles.inputGroup, { borderColor: colors.border, backgroundColor: colors.card }]}>
-              <Ionicons name="lock-closed-outline" size={18} color={colors.muted} />
+            <View style={[
+              styles.inputGroup, 
+              { 
+                borderColor: focusedField === 'password' ? colors.primary : colors.border, 
+                backgroundColor: colors.card,
+                borderWidth: focusedField === 'password' ? 1.5 : 1
+              }
+            ]}>
+              <Ionicons name="lock-closed-outline" size={18} color={focusedField === 'password' ? colors.primary : colors.muted} />
               <TextInput
                 style={[styles.input, { color: colors.foreground }]}
-                placeholder="Password"
+                placeholder={t('auth.password')}
                 placeholderTextColor={colors.muted}
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry={!showPassword}
+                onFocus={() => setFocusedField('password')}
+                onBlur={() => setFocusedField(null)}
               />
               <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
                 <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={18} color={colors.muted} />
@@ -135,18 +173,21 @@ export default function AuthScreen() {
               {loading ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.submitText}>{mode === 'signin' ? 'Sign In' : 'Create Account'}</Text>
+                <Text style={styles.submitText}>{mode === 'signin' ? t('auth.signIn') : t('auth.signUp')}</Text>
               )}
             </TouchableOpacity>
 
             <TouchableOpacity
-              onPress={() => setMode(mode === 'signin' ? 'signup' : 'signin')}
+              onPress={() => {
+                haptics.light();
+                setMode(mode === 'signin' ? 'signup' : 'signin');
+              }}
               style={styles.toggleBtn}
             >
               <Text style={[styles.toggleText, { color: colors.muted }]}>
-                {mode === 'signin' ? "Don't have an account? " : 'Already have an account? '}
+                {mode === 'signin' ? t('auth.dontHaveAccount') : t('auth.alreadyHaveAccount')}
                 <Text style={{ color: colors.primary, fontFamily: 'Nunito_700Bold' }}>
-                  {mode === 'signin' ? 'Sign Up' : 'Sign In'}
+                  {mode === 'signin' ? t('auth.signUp') : t('auth.signIn')}
                 </Text>
               </Text>
             </TouchableOpacity>
@@ -177,10 +218,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    borderWidth: 1,
     borderRadius: 14,
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingVertical: 12,
   },
   input: { flex: 1, fontSize: 15, fontFamily: 'Nunito_400Regular' },
   submitBtn: { borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 8 },

@@ -9,15 +9,15 @@ A modern food delivery mobile app built with **React Native + Expo**, featuring 
 - **Cart** — Add items, adjust quantities, checkout flow
 - **Orders** — View order history and live status tracking
 - **Auth** — Sign up / sign in with email & password (Supabase)
-- **Roles** — `client` (regular user) and `admin` (dashboard access)
-- **Admin Panel** — Manage users and view platform stats (admin only)
+- **Roles** — `client`, `admin`, `restaurant_admin`, and `employee`
+- **Admin Panel** — Manage users, restaurants, menu items, and order status by role
 
 ## Tech Stack
 
 | Layer | Technology |
 |---|---|
-| Framework | React Native + Expo SDK 53 |
-| Navigation | Expo Router v5 (file-based) |
+| Framework | React Native + Expo SDK 54 |
+| Navigation | Expo Router v6 (file-based) |
 | Backend / Auth / DB | Supabase |
 | Server State | TanStack React Query |
 | Animations | React Native Reanimated |
@@ -34,7 +34,7 @@ app/
   checkout.tsx     # Checkout modal
   admin.tsx        # Admin dashboard (admin role only)
 components/        # Reusable UI components
-context/           # AuthContext, CartContext
+context/           # Auth, cart, data, notification, and preferences contexts
 hooks/             # useColors (theme)
 lib/               # Supabase client, QueryClient, haptics
 data/              # Mock restaurant & menu data
@@ -108,6 +108,14 @@ $$ language plpgsql security definer;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
+```
+
+### Multi-Role Migration SQL (Session 8)
+Run the following SQL in your Supabase SQL editor to enable the new partner roles and link profiles to restaurants:
+```sql
+alter table public.profiles drop constraint if exists profiles_role_check;
+alter table public.profiles add constraint profiles_role_check check (role in ('client', 'admin', 'restaurant_admin', 'employee'));
+alter table public.profiles add column if not exists restaurant_id text;
 ```
 
 To promote yourself to admin:

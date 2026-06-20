@@ -21,6 +21,28 @@ export const Colors = {
     radiusSmall: 8,
     radiusLarge: 24,
   },
+  dark: {
+    primary: '#FF7F50',
+    primaryLight: '#2C1D18',
+    secondary: '#F2F2F7',
+    accent: '#FFC043',
+    background: '#0F0F10',
+    surface: '#1A1A1C',
+    card: '#1A1A1C',
+    border: '#2A2A2E',
+    muted: '#8E8E93',
+    mutedForeground: '#9898A0',
+    foreground: '#F2F2F7',
+    success: '#30D158',
+    error: '#FF453A',
+    overlay: 'rgba(0,0,0,0.7)',
+    tabBar: '#1A1A1C',
+    tabBarActive: '#FF7F50',
+    tabBarInactive: '#55555A',
+    radius: 16,
+    radiusSmall: 8,
+    radiusLarge: 24,
+  },
 };
 
 export type ColorScheme = typeof Colors.light;

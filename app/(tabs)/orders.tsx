@@ -5,68 +5,85 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { useColors } from '@/hooks/useColors';
-import { RESTAURANTS } from '@/data/mockData';
+import { usePreferences } from '@/context/PreferencesContext';
+import { useData, Order } from '@/context/DataContext';
+import { useCart } from '@/context/CartContext';
+import { haptics } from '@/lib/haptics';
+import { ReviewModal } from '@/components/ReviewModal';
 
-type Order = {
-  id: string;
-  restaurantId: string;
-  items: string[];
-  total: number;
-  status: 'delivered' | 'preparing' | 'on_the_way';
-  date: string;
+const STATUS_CONFIG_MAP = {
+  pending: { labelKey: 'orders.statusPending', color: '#FFB800', icon: 'time-outline' as const },
+  preparing: { labelKey: 'orders.statusPreparing', color: '#FF9500', icon: 'restaurant-outline' as const },
+  on_the_way: { labelKey: 'orders.statusDelivering', color: '#FF6B35', icon: 'bicycle-outline' as const },
+  delivered: { labelKey: 'orders.statusCompleted', color: '#34C759', icon: 'checkmark-circle-outline' as const },
+  cancelled: { labelKey: 'orders.statusCancelled', color: '#FF3B30', icon: 'close-circle-outline' as const },
 };
 
-const MOCK_ORDERS: Order[] = [
-  {
-    id: 'o1',
-    restaurantId: '1',
-    items: ['Classic Smash Burger', 'Crispy Fries'],
-    total: 17.98,
-    status: 'delivered',
-    date: 'Today, 12:30 PM',
-  },
-  {
-    id: 'o2',
-    restaurantId: '2',
-    items: ['Margherita', 'Diavola'],
-    total: 35.98,
-    status: 'on_the_way',
-    date: 'Today, 1:15 PM',
-  },
-  {
-    id: 'o3',
-    restaurantId: '3',
-    items: ['Dragon Roll', 'Salmon Nigiri x2'],
-    total: 25.98,
-    status: 'preparing',
-    date: 'Yesterday, 7:45 PM',
-  },
-];
-
-const STATUS_CONFIG = {
-  delivered: { label: 'Delivered', color: '#34C759', icon: 'checkmark-circle' as const },
-  preparing: { label: 'Preparing', color: '#FFB800', icon: 'restaurant' as const },
-  on_the_way: { label: 'On the way', color: '#FF6B35', icon: 'bicycle' as const },
+type CardProps = {
+  order: Order;
+  onReviewPress: (order: Order) => void;
 };
 
-function OrderCard({ order }: { order: Order }) {
+function OrderCard({ order, onReviewPress }: CardProps) {
   const colors = useColors();
-  const restaurant = RESTAURANTS.find((r) => r.id === order.restaurantId);
-  const status = STATUS_CONFIG[order.status];
+  const { t } = usePreferences();
+  const { restaurants, menuItems } = useData();
+  const { reorderItems } = useCart();
+  const restaurant = restaurants.find((r) => r.id === order.restaurantId);
+  const status = STATUS_CONFIG_MAP[order.status] || STATUS_CONFIG_MAP.pending;
+
+  const handleReorder = () => {
+    haptics.medium();
+    if (!order.itemsRaw || order.itemsRaw.length === 0 || !restaurant) {
+      router.push(`/restaurant/${order.restaurantId}`);
+      return;
+    }
+
+    const reconstructed = order.itemsRaw
+      .map((raw) => {
+        const menuItem = menuItems.find((m) => m.id === raw.menuItemId);
+        if (!menuItem) return null;
+        return {
+          menuItem,
+          quantity: raw.quantity,
+          selectedModifiers: raw.selectedModifiers,
+          specialInstructions: raw.specialInstructions,
+        };
+      })
+      .filter(Boolean) as any[];
+
+    if (reconstructed.length > 0) {
+      reorderItems(reconstructed, restaurant);
+      router.push('/checkout');
+    } else {
+      router.push(`/restaurant/${order.restaurantId}`);
+    }
+  };
+
+  const showReviewButton = order.status === 'delivered' && !order.reviewed;
 
   return (
     <TouchableOpacity
       style={[styles.card, { backgroundColor: colors.card }]}
       activeOpacity={0.92}
+      onPress={() => {
+        haptics.medium();
+        router.push({
+          pathname: '/orders/[id]',
+          params: { id: order.id },
+        });
+      }}
     >
       <View style={styles.cardHeader}>
         <Image
-          source={{ uri: restaurant?.imageUrl }}
+          source={{ uri: restaurant?.imageUrl || 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=400&auto=format&fit=crop' }}
           style={styles.restaurantImg}
           contentFit="cover"
         />
         <View style={styles.cardInfo}>
-          <Text style={[styles.restName, { color: colors.foreground }]}>{restaurant?.name}</Text>
+          <Text style={[styles.restName, { color: colors.foreground }]}>
+            {restaurant?.name || t('restaurant.notFound')}
+          </Text>
           <Text style={[styles.orderDate, { color: colors.muted }]}>{order.date}</Text>
           <Text style={[styles.orderItems, { color: colors.muted }]} numberOfLines={1}>
             {order.items.join(' · ')}
@@ -76,61 +93,109 @@ function OrderCard({ order }: { order: Order }) {
       <View style={[styles.cardFooter, { borderTopColor: colors.border }]}>
         <View style={[styles.statusBadge, { backgroundColor: `${status.color}18` }]}>
           <Ionicons name={status.icon} size={13} color={status.color} />
-          <Text style={[styles.statusText, { color: status.color }]}>{status.label}</Text>
+          <Text style={[styles.statusText, { color: status.color }]}>{t(status.labelKey as any)}</Text>
         </View>
         <Text style={[styles.total, { color: colors.foreground }]}>${order.total.toFixed(2)}</Text>
       </View>
-      {order.status !== 'delivered' && (
-        <TouchableOpacity style={[styles.trackBtn, { borderColor: colors.primary }]}>
-          <Text style={[styles.trackText, { color: colors.primary }]}>Track Order</Text>
-          <Ionicons name="arrow-forward" size={14} color={colors.primary} />
-        </TouchableOpacity>
-      )}
-      {order.status === 'delivered' && (
-        <TouchableOpacity
-          onPress={() => router.push(`/restaurant/${order.restaurantId}`)}
-          style={[styles.trackBtn, { borderColor: colors.border }]}
-        >
-          <Text style={[styles.trackText, { color: colors.foreground }]}>Reorder</Text>
-          <Ionicons name="refresh" size={14} color={colors.foreground} />
-        </TouchableOpacity>
-      )}
+
+      {/* Dynamic Actions */}
+      <View style={styles.actionsRow}>
+        {order.status !== 'delivered' && order.status !== 'cancelled' ? (
+          <TouchableOpacity 
+            onPress={() => {
+              haptics.light();
+              router.push({
+                pathname: '/orders/[id]',
+                params: { id: order.id },
+              });
+            }}
+            style={[styles.actionBtn, { borderColor: colors.primary }]}
+          >
+            <Text style={[styles.actionText, { color: colors.primary }]}>{t('orders.track')}</Text>
+            <Ionicons name="arrow-forward" size={14} color={colors.primary} />
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.completedActions}>
+            {showReviewButton && (
+              <TouchableOpacity
+                onPress={() => onReviewPress(order)}
+                style={[styles.actionBtn, { borderColor: colors.accent }]}
+              >
+                <Text style={[styles.actionText, { color: colors.accent }]}>{t('orders.leaveReview')}</Text>
+                <Ionicons name="star" size={14} color={colors.accent} />
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              onPress={handleReorder}
+              style={[styles.actionBtn, { borderColor: colors.border }]}
+            >
+              <Text style={[styles.actionText, { color: colors.foreground }]}>{t('orders.reorder')}</Text>
+              <Ionicons name="refresh" size={14} color={colors.foreground} />
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
     </TouchableOpacity>
   );
 }
 
 export default function OrdersScreen() {
   const colors = useColors();
+  const { t } = usePreferences();
+  const { orders, restaurants } = useData();
   const insets = useSafeAreaInsets();
   const topPadding = Platform.OS === 'web' ? 67 : insets.top;
+
+  const [reviewOrder, setReviewOrder] = useState<Order | null>(null);
+  const reviewingRestaurant = reviewOrder
+    ? restaurants.find((r) => r.id === reviewOrder.restaurantId)
+    : null;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: topPadding + 12, backgroundColor: colors.card }]}>
-        <Text style={[styles.title, { color: colors.foreground }]}>My Orders</Text>
+        <Text style={[styles.title, { color: colors.foreground }]}>{t('orders.title')}</Text>
       </View>
       <FlatList
-        data={MOCK_ORDERS}
+        data={orders}
         keyExtractor={(o) => o.id}
-        renderItem={({ item }) => <OrderCard order={item} />}
+        renderItem={({ item }) => (
+          <OrderCard
+            order={item}
+            onReviewPress={(order) => setReviewOrder(order)}
+          />
+        )}
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <View style={styles.empty}>
             <Ionicons name="receipt-outline" size={56} color={colors.muted} />
-            <Text style={[styles.emptyTitle, { color: colors.foreground }]}>No orders yet</Text>
+            <Text style={[styles.emptyTitle, { color: colors.foreground }]}>{t('orders.noOrders')}</Text>
             <Text style={[styles.emptyText, { color: colors.muted }]}>
-              Your order history will appear here
+              {t('orders.orderHistoryEmpty')}
             </Text>
             <TouchableOpacity
-              onPress={() => router.push('/')}
+              onPress={() => {
+                haptics.medium();
+                router.push('/');
+              }}
               style={[styles.browseBtn, { backgroundColor: colors.primary }]}
             >
-              <Text style={styles.browseBtnText}>Browse Restaurants</Text>
+              <Text style={styles.browseBtnText}>{t('orders.browseRestaurants')}</Text>
             </TouchableOpacity>
           </View>
         }
       />
+
+      {reviewOrder && reviewingRestaurant && (
+        <ReviewModal
+          visible={!!reviewOrder}
+          onClose={() => setReviewOrder(null)}
+          orderId={reviewOrder.id}
+          restaurantId={reviewingRestaurant.id}
+          restaurantName={reviewingRestaurant.name}
+        />
+      )}
     </View>
   );
 }
@@ -166,18 +231,26 @@ const styles = StyleSheet.create({
   statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
   statusText: { fontSize: 12, fontFamily: 'Nunito_700Bold' },
   total: { fontSize: 15, fontFamily: 'Nunito_800ExtraBold' },
-  trackBtn: {
+  actionsRow: {
+    paddingHorizontal: 14,
+    paddingBottom: 14,
+  },
+  completedActions: {
+    flexDirection: 'row',
+    gap: 10,
+    width: '100%',
+  },
+  actionBtn: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    marginHorizontal: 14,
-    marginBottom: 14,
     paddingVertical: 10,
     borderRadius: 12,
     borderWidth: 1.5,
   },
-  trackText: { fontSize: 14, fontFamily: 'Nunito_700Bold' },
+  actionText: { fontSize: 14, fontFamily: 'Nunito_700Bold' },
   empty: { alignItems: 'center', paddingTop: 80, gap: 12, paddingHorizontal: 40 },
   emptyTitle: { fontSize: 22, fontFamily: 'Nunito_800ExtraBold' },
   emptyText: { fontSize: 14, fontFamily: 'Nunito_400Regular', textAlign: 'center', lineHeight: 20 },

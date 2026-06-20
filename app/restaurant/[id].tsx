@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   SectionList,
   Platform,
@@ -16,28 +15,38 @@ import { useColors } from '@/hooks/useColors';
 import { FoodItemCard } from '@/components/FoodItemCard';
 import { CartButton } from '@/components/CartButton';
 import { CartSheet } from '@/components/CartSheet';
-import { RESTAURANTS, MENU_ITEMS } from '@/data/mockData';
+import { usePreferences } from '@/context/PreferencesContext';
+import { useData } from '@/context/DataContext';
+import { haptics } from '@/lib/haptics';
 
 export default function RestaurantScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const { t } = usePreferences();
+  const { restaurants, menuItems, favorites, toggleFavorite, reviews } = useData();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [cartVisible, setCartVisible] = useState(false);
+  const [activeTab, setActiveTab] = useState<'menu' | 'reviews'>('menu');
 
-  const restaurant = RESTAURANTS.find((r) => r.id === id);
-  const items = MENU_ITEMS.filter((m) => m.restaurantId === id);
+  const restaurant = restaurants.find((r) => r.id === id);
+  const items = menuItems.filter((m) => m.restaurantId === id);
+  const restaurantReviews = reviews.filter((r) => r.restaurantId === id);
 
   // Group items by category
   const categories = [...new Set(items.map((i) => i.category))];
-  const sections = categories.map((cat) => ({
-    title: cat,
-    data: items.filter((i) => i.category === cat),
-  }));
+  
+  const sections = activeTab === 'menu'
+    ? categories.map((cat) => ({
+        title: cat,
+        data: items.filter((i) => i.category === cat),
+        type: 'menu' as const,
+      }))
+    : [{ title: 'Reviews', data: restaurantReviews, type: 'reviews' as const }];
 
   if (!restaurant) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <Text style={{ color: colors.foreground, padding: 20 }}>Restaurant not found</Text>
+        <Text style={{ color: colors.foreground, padding: 20 }}>{t('restaurant.notFound')}</Text>
       </View>
     );
   }
@@ -47,8 +56,8 @@ export default function RestaurantScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <SectionList
-        sections={sections}
-        keyExtractor={(item) => item.id}
+        sections={sections as any}
+        keyExtractor={(item, index) => item.id || `idx_${index}`}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 120 }}
         ListHeaderComponent={
@@ -62,10 +71,28 @@ export default function RestaurantScreen() {
               />
               {/* Back button */}
               <TouchableOpacity
-                onPress={() => router.back()}
+                onPress={() => {
+                  haptics.light();
+                  router.back();
+                }}
                 style={[styles.backBtn, { top: topPadding + 12 }]}
               >
                 <Ionicons name="arrow-back" size={22} color="#fff" />
+              </TouchableOpacity>
+
+              {/* Favorite button */}
+              <TouchableOpacity
+                onPress={() => {
+                  haptics.medium();
+                  toggleFavorite(restaurant.id);
+                }}
+                style={[styles.favoriteBtn, { top: topPadding + 12 }]}
+              >
+                <Ionicons
+                  name={favorites.includes(restaurant.id) ? 'heart' : 'heart-outline'}
+                  size={22}
+                  color={favorites.includes(restaurant.id) ? '#FF3B30' : '#fff'}
+                />
               </TouchableOpacity>
             </View>
 
@@ -99,25 +126,90 @@ export default function RestaurantScreen() {
                     color={restaurant.deliveryFee === 0 ? colors.success : colors.primary}
                   />
                   <Text style={[styles.badgeText, { color: restaurant.deliveryFee === 0 ? colors.success : colors.foreground }]}>
-                    {restaurant.deliveryFee === 0 ? 'Free delivery' : `$${restaurant.deliveryFee.toFixed(2)} delivery`}
+                    {restaurant.deliveryFee === 0 ? t('restaurant.freeDelivery') : t('restaurant.delivery', { fee: '$' + restaurant.deliveryFee.toFixed(2) })}
                   </Text>
                 </View>
               </View>
             </View>
 
-            <Text style={[styles.menuHeader, { color: colors.foreground }]}>Menu</Text>
+            {/* Tab Selector */}
+            <View style={[styles.tabContainer, { borderBottomColor: colors.border }]}>
+              <TouchableOpacity
+                onPress={() => {
+                  haptics.light();
+                  setActiveTab('menu');
+                }}
+                style={[
+                  styles.tabButton,
+                  activeTab === 'menu' && { borderBottomColor: colors.primary },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.tabButtonText,
+                    { color: activeTab === 'menu' ? colors.primary : colors.muted },
+                  ]}
+                >
+                  {t('restaurant.menu')}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => {
+                  haptics.light();
+                  setActiveTab('reviews');
+                }}
+                style={[
+                  styles.tabButton,
+                  activeTab === 'reviews' && { borderBottomColor: colors.primary },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.tabButtonText,
+                    { color: activeTab === 'reviews' ? colors.primary : colors.muted },
+                  ]}
+                >
+                  {t('restaurant.reviews')} ({restaurantReviews.length})
+                </Text>
+              </TouchableOpacity>
+            </View>
           </>
         }
-        renderSectionHeader={({ section }) => (
-          <View style={[styles.sectionHeader, { backgroundColor: colors.background }]}>
-            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>{section.title}</Text>
-          </View>
-        )}
-        renderItem={({ item }) => (
-          <View style={{ paddingHorizontal: 16 }}>
-            <FoodItemCard item={item} restaurant={restaurant} />
-          </View>
-        )}
+        renderSectionHeader={({ section }) => {
+          if ((section as any).type === 'reviews') return null;
+          const displayTitle = t('home.categories.' + section.title.toLowerCase());
+          const sectionTitle = displayTitle.startsWith('home.categories.') ? section.title : displayTitle;
+          return (
+            <View style={[styles.sectionHeader, { backgroundColor: colors.background }]}>
+              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>{sectionTitle}</Text>
+            </View>
+          );
+        }}
+        renderItem={({ item, section }) => {
+          if ((section as any).type === 'reviews') {
+            const review = item as any;
+            return (
+              <View style={[styles.reviewCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <View style={styles.reviewHeader}>
+                  <Text style={[styles.reviewUser, { color: colors.foreground }]}>{review.userName}</Text>
+                  <View style={styles.reviewRating}>
+                    <Ionicons name="star" size={12} color={colors.accent} />
+                    <Text style={[styles.reviewRatingText, { color: colors.foreground }]}>{review.rating}</Text>
+                  </View>
+                </View>
+                <Text style={[styles.reviewDate, { color: colors.muted }]}>{review.date}</Text>
+                {review.comment ? (
+                  <Text style={[styles.reviewComment, { color: colors.foreground }]}>{review.comment}</Text>
+                ) : null}
+              </View>
+            );
+          }
+          return (
+            <View style={{ paddingHorizontal: 16 }}>
+              <FoodItemCard item={item} restaurant={restaurant} />
+            </View>
+          );
+        }}
       />
 
       <CartButton onPress={() => setCartVisible(true)} />
@@ -133,6 +225,16 @@ const styles = StyleSheet.create({
   backBtn: {
     position: 'absolute',
     left: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  favoriteBtn: {
+    position: 'absolute',
+    right: 16,
     width: 40,
     height: 40,
     borderRadius: 20,
@@ -156,7 +258,66 @@ const styles = StyleSheet.create({
   badges: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   badge: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20 },
   badgeText: { fontSize: 12, fontFamily: 'Nunito_600SemiBold' },
-  menuHeader: { fontSize: 20, fontFamily: 'Nunito_800ExtraBold', paddingHorizontal: 20, marginTop: 4, marginBottom: 4 },
+  tabContainer: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    marginHorizontal: 16,
+    marginTop: 8,
+    marginBottom: 16,
+  },
+  tabButton: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 2.5,
+    borderBottomColor: 'transparent',
+  },
+  tabButtonText: {
+    fontSize: 15,
+    fontFamily: 'Nunito_700Bold',
+  },
   sectionHeader: { paddingHorizontal: 20, paddingVertical: 10 },
   sectionTitle: { fontSize: 16, fontFamily: 'Nunito_700Bold' },
+  reviewCard: {
+    marginHorizontal: 16,
+    marginBottom: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 14,
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 4 },
+      android: { elevation: 1 },
+      web: { boxShadow: '0 1px 4px rgba(0,0,0,0.04)' },
+    }),
+  },
+  reviewHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  reviewUser: {
+    fontSize: 14,
+    fontFamily: 'Nunito_700Bold',
+  },
+  reviewRating: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  reviewRatingText: {
+    fontSize: 12,
+    fontFamily: 'Nunito_600SemiBold',
+  },
+  reviewDate: {
+    fontSize: 11,
+    fontFamily: 'Nunito_400Regular',
+    color: '#999',
+    marginBottom: 6,
+  },
+  reviewComment: {
+    fontSize: 13,
+    fontFamily: 'Nunito_400Regular',
+    lineHeight: 18,
+  },
 });

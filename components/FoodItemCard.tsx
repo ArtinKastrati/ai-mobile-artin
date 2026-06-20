@@ -1,11 +1,13 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Platform, Alert } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useColors } from '@/hooks/useColors';
 import { MenuItem, Restaurant } from '@/data/mockData';
 import { useCart } from '@/context/CartContext';
 import { haptics } from '@/lib/haptics';
+import { usePreferences } from '@/context/PreferencesContext';
+import { CustomizationSheet } from './CustomizationSheet';
 
 type Props = {
   item: MenuItem;
@@ -14,55 +16,109 @@ type Props = {
 
 export function FoodItemCard({ item, restaurant }: Props) {
   const colors = useColors();
-  const { addItem, items } = useCart();
-  const cartItem = items.find((i) => i.menuItem.id === item.id);
+  const { t } = usePreferences();
+  const { addItem, items, restaurant: cartRestaurant, clearAndAddItem } = useCart();
+  const [customizerVisible, setCustomizerVisible] = useState(false);
+
+  const hasModifiers = item.modifierGroups && item.modifierGroups.length > 0;
+  const totalQuantity = items
+    .filter((i) => i.menuItem.id === item.id)
+    .reduce((sum, i) => sum + i.quantity, 0);
 
   const handleAdd = () => {
     haptics.light();
-    addItem(item, restaurant);
+    if (hasModifiers) {
+      setCustomizerVisible(true);
+      return;
+    }
+    if (cartRestaurant && cartRestaurant.id !== restaurant.id) {
+      Alert.alert(
+        t('cart.conflictTitle') || 'Start a new basket?',
+        (t('cart.conflictBody') || 'Adding items from {newRest} will clear your current basket from {oldRest}.')
+          .replace('{newRest}', restaurant.name)
+          .replace('{oldRest}', cartRestaurant.name),
+        [
+          { text: t('common.cancel') || 'Cancel', style: 'cancel' },
+          { 
+            text: t('cart.conflictConfirm') || 'Yes, start new basket', 
+            style: 'destructive',
+            onPress: () => {
+              haptics.heavy();
+              clearAndAddItem(item, restaurant);
+            } 
+          }
+        ]
+      );
+    } else {
+      addItem(item, restaurant);
+    }
   };
 
+  const handleCardPress = () => {
+    if (hasModifiers) {
+      haptics.light();
+      setCustomizerVisible(true);
+    }
+  };
+
+  const CardComponent = hasModifiers ? TouchableOpacity : View;
+
   return (
-    <View style={[styles.card, { backgroundColor: colors.card }]}>
-      <View style={styles.content}>
-        <View style={styles.textSection}>
-          {item.popular && (
-            <View style={[styles.popularBadge, { backgroundColor: colors.primaryLight }]}>
-              <Text style={[styles.popularText, { color: colors.primary }]}>Popular</Text>
-            </View>
-          )}
-          <Text style={[styles.name, { color: colors.foreground }]} numberOfLines={2}>
-            {item.name}
-          </Text>
-          <Text style={[styles.description, { color: colors.muted }]} numberOfLines={2}>
-            {item.description}
-          </Text>
-          <Text style={[styles.price, { color: colors.foreground }]}>
-            ${item.price.toFixed(2)}
-          </Text>
+    <>
+      <CardComponent 
+        style={[styles.card, { backgroundColor: colors.card }]}
+        onPress={hasModifiers ? handleCardPress : undefined}
+        activeOpacity={0.9}
+      >
+        <View style={styles.content}>
+          <View style={styles.textSection}>
+            {item.popular && (
+              <View style={[styles.popularBadge, { backgroundColor: colors.primaryLight }]}>
+                <Text style={[styles.popularText, { color: colors.primary }]}>{t('restaurant.popular')}</Text>
+              </View>
+            )}
+            <Text style={[styles.name, { color: colors.foreground }]} numberOfLines={2}>
+              {item.name}
+            </Text>
+            <Text style={[styles.description, { color: colors.muted }]} numberOfLines={2}>
+              {item.description}
+            </Text>
+            <Text style={[styles.price, { color: colors.foreground }]}>
+              ${item.price.toFixed(2)}
+            </Text>
+          </View>
+          <View style={styles.imageSection}>
+            <Image
+              source={{ uri: item.imageUrl }}
+              style={styles.image}
+              contentFit="cover"
+              transition={300}
+            />
+            <TouchableOpacity
+              onPress={handleAdd}
+              style={[styles.addButton, { backgroundColor: colors.primary }]}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="add" size={20} color="#fff" />
+            </TouchableOpacity>
+            {totalQuantity > 0 && (
+              <View style={[styles.quantityBadge, { backgroundColor: colors.primary }]}>
+                <Text style={styles.quantityText}>{totalQuantity}</Text>
+              </View>
+            )}
+          </View>
         </View>
-        <View style={styles.imageSection}>
-          <Image
-            source={{ uri: item.imageUrl }}
-            style={styles.image}
-            contentFit="cover"
-            transition={300}
-          />
-          <TouchableOpacity
-            onPress={handleAdd}
-            style={[styles.addButton, { backgroundColor: colors.primary }]}
-            activeOpacity={0.85}
-          >
-            <Ionicons name="add" size={20} color="#fff" />
-          </TouchableOpacity>
-          {cartItem && (
-            <View style={[styles.quantityBadge, { backgroundColor: colors.primary }]}>
-              <Text style={styles.quantityText}>{cartItem.quantity}</Text>
-            </View>
-          )}
-        </View>
-      </View>
-    </View>
+      </CardComponent>
+
+      {hasModifiers && (
+        <CustomizationSheet
+          visible={customizerVisible}
+          onClose={() => setCustomizerVisible(false)}
+          item={item}
+          restaurant={restaurant}
+        />
+      )}
+    </>
   );
 }
 

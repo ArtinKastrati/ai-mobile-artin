@@ -20,6 +20,15 @@ export type Restaurant = {
   description: string;
 };
 
+export type OptionChoice = { name: string; price: number };
+
+export type ModifierGroup = {
+  title: string;
+  required: boolean;
+  multiSelect: boolean;
+  choices: OptionChoice[];
+};
+
 export type MenuItem = {
   id: string;
   restaurantId: string;
@@ -29,6 +38,7 @@ export type MenuItem = {
   imageUrl: string;
   category: string;
   popular?: boolean;
+  modifierGroups?: ModifierGroup[];
 };
 
 export const CATEGORIES: Category[] = [
@@ -47,7 +57,7 @@ export const RESTAURANTS: Restaurant[] = [
     name: 'Smoke & Fire Burgers',
     cuisine: 'American • Burgers',
     rating: 4.8,
-    reviewCount: 1234,
+    reviewCount: 8,
     deliveryTime: '15-25 min',
     deliveryFee: 1.99,
     minOrder: 10,
@@ -62,7 +72,7 @@ export const RESTAURANTS: Restaurant[] = [
     name: 'Napoli Pizza Co.',
     cuisine: 'Italian • Pizza',
     rating: 4.6,
-    reviewCount: 892,
+    reviewCount: 6,
     deliveryTime: '20-35 min',
     deliveryFee: 0,
     minOrder: 12,
@@ -77,7 +87,7 @@ export const RESTAURANTS: Restaurant[] = [
     name: 'Sakura Sushi Bar',
     cuisine: 'Japanese • Sushi',
     rating: 4.9,
-    reviewCount: 567,
+    reviewCount: 5,
     deliveryTime: '25-40 min',
     deliveryFee: 2.99,
     minOrder: 20,
@@ -91,7 +101,7 @@ export const RESTAURANTS: Restaurant[] = [
     name: 'Green Bowl Kitchen',
     cuisine: 'Healthy • Salads',
     rating: 4.5,
-    reviewCount: 423,
+    reviewCount: 4,
     deliveryTime: '10-20 min',
     deliveryFee: 1.49,
     minOrder: 8,
@@ -105,7 +115,7 @@ export const RESTAURANTS: Restaurant[] = [
     name: 'Sweet Tooth Bakery',
     cuisine: 'Desserts • Bakery',
     rating: 4.7,
-    reviewCount: 789,
+    reviewCount: 7,
     deliveryTime: '15-30 min',
     deliveryFee: 0.99,
     minOrder: 6,
@@ -119,7 +129,7 @@ export const RESTAURANTS: Restaurant[] = [
     name: 'Brew & Grind Cafe',
     cuisine: 'Coffee • Snacks',
     rating: 4.4,
-    reviewCount: 312,
+    reviewCount: 3,
     deliveryTime: '10-15 min',
     deliveryFee: 1.99,
     minOrder: 5,
@@ -141,6 +151,28 @@ export const MENU_ITEMS: MenuItem[] = [
     imageUrl: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400&auto=format&fit=crop',
     category: 'Burgers',
     popular: true,
+    modifierGroups: [
+      {
+        title: 'Choose Size',
+        required: true,
+        multiSelect: false,
+        choices: [
+          { name: 'Single Patty', price: 0 },
+          { name: 'Double Patty', price: 3.00 },
+          { name: 'Triple Patty', price: 5.00 }
+        ]
+      },
+      {
+        title: 'Add Toppings',
+        required: false,
+        multiSelect: true,
+        choices: [
+          { name: 'Extra Cheddar', price: 1.00 },
+          { name: 'Crispy Bacon', price: 1.50 },
+          { name: 'Fried Egg', price: 1.00 }
+        ]
+      }
+    ]
   },
   {
     id: 'm2',
@@ -180,6 +212,29 @@ export const MENU_ITEMS: MenuItem[] = [
     imageUrl: 'https://images.unsplash.com/photo-1574071318508-1cdbab80d002?w=400&auto=format&fit=crop',
     category: 'Pizzas',
     popular: true,
+    modifierGroups: [
+      {
+        title: 'Select Pizza Size',
+        required: true,
+        multiSelect: false,
+        choices: [
+          { name: 'Personal 10"', price: 0 },
+          { name: 'Medium 12"', price: 3.00 },
+          { name: 'Large 14"', price: 6.00 }
+        ]
+      },
+      {
+        title: 'Extra Toppings',
+        required: false,
+        multiSelect: true,
+        choices: [
+          { name: 'Buffalo Mozzarella', price: 2.00 },
+          { name: 'Spicy Salami', price: 1.50 },
+          { name: 'Sautéed Mushrooms', price: 1.00 },
+          { name: 'Black Olives', price: 0.75 }
+        ]
+      }
+    ]
   },
   {
     id: 'm6',
@@ -253,5 +308,28 @@ export const MENU_ITEMS: MenuItem[] = [
     imageUrl: 'https://images.unsplash.com/photo-1461023058943-07fcbe16d735?w=400&auto=format&fit=crop',
     category: 'Coffee',
     popular: true,
+    modifierGroups: [
+      {
+        title: 'Select Milk',
+        required: true,
+        multiSelect: false,
+        choices: [
+          { name: 'Whole Milk', price: 0 },
+          { name: 'Oat Milk', price: 0.75 },
+          { name: 'Almond Milk', price: 0.75 },
+          { name: 'Soy Milk', price: 0.50 }
+        ]
+      },
+      {
+        title: 'Sweeteners',
+        required: false,
+        multiSelect: true,
+        choices: [
+          { name: 'Honey', price: 0.50 },
+          { name: 'Vanilla Syrup', price: 0.75 },
+          { name: 'Caramel Syrup', price: 0.75 }
+        ]
+      }
+    ]
   },
 ];

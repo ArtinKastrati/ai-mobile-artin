@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 
-export type UserRole = 'client' | 'admin';
+export type UserRole = 'client' | 'admin' | 'restaurant_admin' | 'employee';
 
 export type Profile = {
   id: string;
@@ -10,6 +10,7 @@ export type Profile = {
   email: string | null;
   role: UserRole;
   created_at: string;
+  restaurant_id?: string | null;
 };
 
 type AuthContextType = {
