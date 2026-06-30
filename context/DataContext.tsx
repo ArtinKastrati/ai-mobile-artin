@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Restaurant, MenuItem, RESTAURANTS, MENU_ITEMS } from '@/data/mockData';
 import { UserRole } from './AuthContext';
 import { SelectedModifier } from './CartContext';
+import { supabase } from '@/lib/supabase';
 
 export type OrderItemRecord = {
   menuItemId: string;
@@ -22,16 +23,16 @@ export type Review = {
 
 export type Address = {
   id: string;
-  label: string; // e.g. "Home", "Work", "Office"
-  details: string; // e.g. "Rruga Nëna Terezë, Pristina"
+  label: string;
+  details: string;
   notes?: string;
 };
 
 export type PaymentMethod = {
   id: string;
   cardholderName: string;
-  cardNumber: string; // e.g. "•••• •••• •••• 4321"
-  expiryDate: string; // MM/YY
+  cardNumber: string;
+  expiryDate: string;
   cardType: 'Visa' | 'Mastercard' | 'Generic';
 };
 
@@ -54,7 +55,7 @@ export type Order = {
   addressDetails?: string;
   discountApplied?: number;
   promoCodeUsed?: string;
-  paymentMethod?: string; // e.g. "Cash on Delivery", "Visa •••• 4321"
+  paymentMethod?: string;
 };
 
 const DEFAULT_REVIEWS: Review[] = [
@@ -115,6 +116,71 @@ const DEFAULT_PROFILE: ProfileDetails = {
   avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop',
 };
 
+// ── Supabase row mappers ──────────────────────────────────────────────────────
+
+function mapDbRestaurant(r: any): Restaurant {
+  return {
+    id: r.id,
+    name: r.name,
+    cuisine: r.cuisine,
+    rating: r.rating,
+    reviewCount: r.review_count,
+    deliveryTime: r.delivery_time,
+    deliveryFee: r.delivery_fee,
+    minOrder: r.min_order,
+    imageUrl: r.image_url,
+    categories: r.categories ?? [],
+    featured: r.featured ?? false,
+    priceRange: r.price_range,
+    description: r.description,
+  };
+}
+
+function mapDbMenuItem(m: any): MenuItem {
+  return {
+    id: m.id,
+    restaurantId: m.restaurant_id,
+    name: m.name,
+    description: m.description,
+    price: m.price,
+    imageUrl: m.image_url,
+    category: m.category,
+    popular: m.popular ?? false,
+    modifierGroups: m.modifier_groups ?? undefined,
+  };
+}
+
+function mapDbOrder(o: any): Order {
+  return {
+    id: o.id,
+    restaurantId: o.restaurant_id,
+    items: o.items ?? [],
+    itemsRaw: o.items_raw ?? undefined,
+    reviewed: o.reviewed ?? false,
+    total: o.total,
+    status: o.status,
+    date: o.date,
+    addressLabel: o.address_label ?? undefined,
+    addressDetails: o.address_details ?? undefined,
+    discountApplied: o.discount_applied ?? undefined,
+    promoCodeUsed: o.promo_code_used ?? undefined,
+    paymentMethod: o.payment_method ?? undefined,
+  };
+}
+
+function mapDbReview(r: any): Review {
+  return {
+    id: r.id,
+    restaurantId: r.restaurant_id,
+    userName: r.user_name,
+    rating: r.rating,
+    comment: r.comment,
+    date: r.date,
+  };
+}
+
+// ── Context type ──────────────────────────────────────────────────────────────
+
 interface DataContextType {
   restaurants: Restaurant[];
   menuItems: MenuItem[];
@@ -161,6 +227,8 @@ interface DataContextType {
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
+// ── Provider ──────────────────────────────────────────────────────────────────
+
 export function DataProvider({ children }: { children: React.ReactNode }) {
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
@@ -171,115 +239,186 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [profileDetails, setProfileDetails] = useState<ProfileDetails>(DEFAULT_PROFILE);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-
-  // Role simulation states (for developer local checks)
   const [simulatedRole, setSimulatedRoleState] = useState<UserRole>('client');
   const [simulatedRestaurantId, setSimulatedRestaurantIdState] = useState<string>('1');
+
+  const getCurrentUserId = async (): Promise<string | null> => {
+    const { data } = await supabase.auth.getUser();
+    return data.user?.id ?? null;
+  };
+
+  // ── Seeding helpers ────────────────────────────────────────────────────────
+
+  const seedRestaurantsToSupabase = async () => {
+    const rows = RESTAURANTS.map((r) => ({
+      id: r.id,
+      name: r.name,
+      cuisine: r.cuisine,
+      rating: r.rating,
+      review_count: r.reviewCount,
+      delivery_time: r.deliveryTime,
+      delivery_fee: r.deliveryFee,
+      min_order: r.minOrder,
+      image_url: r.imageUrl,
+      categories: r.categories,
+      featured: r.featured ?? false,
+      price_range: r.priceRange,
+      description: r.description,
+    }));
+    await supabase.from('restaurants').upsert(rows, { onConflict: 'id' });
+  };
+
+  const seedMenuItemsToSupabase = async () => {
+    const rows = MENU_ITEMS.map((m) => ({
+      id: m.id,
+      restaurant_id: m.restaurantId,
+      name: m.name,
+      description: m.description,
+      price: m.price,
+      image_url: m.imageUrl,
+      category: m.category,
+      popular: m.popular ?? false,
+      modifier_groups: m.modifierGroups ?? null,
+    }));
+    await supabase.from('menu_items').upsert(rows, { onConflict: 'id' });
+  };
+
+  const seedReviewsToSupabase = async () => {
+    const rows = DEFAULT_REVIEWS.map((r) => ({
+      id: r.id,
+      restaurant_id: r.restaurantId,
+      user_name: r.userName,
+      rating: r.rating,
+      comment: r.comment,
+      date: r.date,
+    }));
+    await supabase.from('reviews').upsert(rows, { onConflict: 'id' });
+  };
+
+  // ── Initial load ────────────────────────────────────────────────────────────
 
   useEffect(() => {
     const loadData = async () => {
       try {
-        const storedRest = await AsyncStorage.getItem('app_restaurants');
-        const storedMenu = await AsyncStorage.getItem('app_menu_items');
-        const storedOrders = await AsyncStorage.getItem('app_orders');
-        const storedFavs = await AsyncStorage.getItem('app_favorites');
-        const storedAddr = await AsyncStorage.getItem('app_addresses');
-        const storedPay = await AsyncStorage.getItem('app_payment_methods');
-        const storedProfile = await AsyncStorage.getItem('app_profile_details');
-        const storedRole = await AsyncStorage.getItem('app_simulated_role');
-        const storedSimRestId = await AsyncStorage.getItem('app_simulated_rest_id');
-        const storedReviews = await AsyncStorage.getItem('app_reviews');
+        // Restaurants ─ fetch from Supabase, seed if empty
+        const { data: restData, error: restErr } = await supabase
+          .from('restaurants')
+          .select('*')
+          .order('name');
 
-        if (storedReviews) {
-          setReviews(JSON.parse(storedReviews));
+        if (!restErr && restData && restData.length > 0) {
+          setRestaurants(restData.map(mapDbRestaurant));
         } else {
-          setReviews(DEFAULT_REVIEWS);
-          await AsyncStorage.setItem('app_reviews', JSON.stringify(DEFAULT_REVIEWS));
-        }
-
-        if (storedRest) {
-          const parsed = JSON.parse(storedRest) as Restaurant[];
-          const migrated = parsed.map((rest) => {
-            const fresh = RESTAURANTS.find((r) => r.id === rest.id);
-            if (fresh && rest.reviewCount > 20) {
-              return {
-                ...rest,
-                reviewCount: fresh.reviewCount,
-              };
-            }
-            return rest;
-          });
-          setRestaurants(migrated);
-        } else {
+          await seedRestaurantsToSupabase();
           setRestaurants(RESTAURANTS);
-          await AsyncStorage.setItem('app_restaurants', JSON.stringify(RESTAURANTS));
         }
 
-        if (storedMenu) {
-          const parsed = JSON.parse(storedMenu) as MenuItem[];
-          const merged = parsed.map((item) => {
+        // Menu items ─ fetch from Supabase, seed if empty
+        const { data: menuData, error: menuErr } = await supabase
+          .from('menu_items')
+          .select('*');
+
+        if (!menuErr && menuData && menuData.length > 0) {
+          const mapped = menuData.map(mapDbMenuItem);
+          // Merge modifier groups from local mock (source of truth for modifiers)
+          const withMods = mapped.map((item) => {
             const fresh = MENU_ITEMS.find((m) => m.id === item.id);
-            if (fresh && fresh.modifierGroups) {
-              return { ...item, modifierGroups: fresh.modifierGroups };
-            }
+            if (fresh?.modifierGroups) return { ...item, modifierGroups: fresh.modifierGroups };
             return item;
           });
-          setMenuItems(merged);
+          setMenuItems(withMods);
         } else {
+          await seedMenuItemsToSupabase();
           setMenuItems(MENU_ITEMS);
-          await AsyncStorage.setItem('app_menu_items', JSON.stringify(MENU_ITEMS));
         }
 
-        if (storedOrders) {
-          setOrders(JSON.parse(storedOrders));
+        // Reviews ─ fetch from Supabase, seed if empty
+        const { data: reviewsData, error: reviewErr } = await supabase
+          .from('reviews')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (!reviewErr && reviewsData && reviewsData.length > 0) {
+          setReviews(reviewsData.map(mapDbReview));
         } else {
-          setOrders(DEFAULT_ORDERS);
-          await AsyncStorage.setItem('app_orders', JSON.stringify(DEFAULT_ORDERS));
+          await seedReviewsToSupabase();
+          setReviews(DEFAULT_REVIEWS);
         }
 
-        if (storedFavs) {
-          setFavorites(JSON.parse(storedFavs));
+        // User-specific data ─ requires authenticated session
+        const userId = await getCurrentUserId();
+
+        // Orders
+        if (userId) {
+          const { data: ordersData, error: ordersErr } = await supabase
+            .from('orders')
+            .select('*')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false });
+
+          if (!ordersErr && ordersData) {
+            setOrders(ordersData.map(mapDbOrder));
+          } else {
+            const stored = await AsyncStorage.getItem('app_orders');
+            setOrders(stored ? JSON.parse(stored) : DEFAULT_ORDERS);
+          }
         } else {
-          setFavorites([]);
-          await AsyncStorage.setItem('app_favorites', JSON.stringify([]));
+          const stored = await AsyncStorage.getItem('app_orders');
+          setOrders(stored ? JSON.parse(stored) : DEFAULT_ORDERS);
         }
 
-        if (storedAddr) {
-          setAddresses(JSON.parse(storedAddr));
+        // Favorites
+        if (userId) {
+          const { data: favsData } = await supabase
+            .from('user_favorites')
+            .select('restaurant_id')
+            .eq('user_id', userId);
+
+          setFavorites(favsData ? favsData.map((f: any) => f.restaurant_id) : []);
         } else {
-          setAddresses(DEFAULT_ADDRESSES);
-          await AsyncStorage.setItem('app_addresses', JSON.stringify(DEFAULT_ADDRESSES));
+          const stored = await AsyncStorage.getItem('app_favorites');
+          setFavorites(stored ? JSON.parse(stored) : []);
         }
 
-        if (storedPay) {
-          setPaymentMethods(JSON.parse(storedPay));
+        // Addresses
+        if (userId) {
+          const { data: addrData, error: addrErr } = await supabase
+            .from('user_addresses')
+            .select('*')
+            .eq('user_id', userId);
+
+          if (!addrErr && addrData && addrData.length > 0) {
+            setAddresses(addrData.map((a: any) => ({
+              id: a.id,
+              label: a.label,
+              details: a.details,
+              notes: a.notes ?? undefined,
+            })));
+          } else {
+            const stored = await AsyncStorage.getItem('app_addresses');
+            setAddresses(stored ? JSON.parse(stored) : DEFAULT_ADDRESSES);
+          }
         } else {
-          setPaymentMethods(DEFAULT_PAYMENTS);
-          await AsyncStorage.setItem('app_payment_methods', JSON.stringify(DEFAULT_PAYMENTS));
+          const stored = await AsyncStorage.getItem('app_addresses');
+          setAddresses(stored ? JSON.parse(stored) : DEFAULT_ADDRESSES);
         }
 
-        if (storedProfile) {
-          setProfileDetails(JSON.parse(storedProfile));
-        } else {
-          setProfileDetails(DEFAULT_PROFILE);
-          await AsyncStorage.setItem('app_profile_details', JSON.stringify(DEFAULT_PROFILE));
-        }
+        // Payment methods ─ local only (do not store card data in DB)
+        const storedPay = await AsyncStorage.getItem('app_payment_methods');
+        setPaymentMethods(storedPay ? JSON.parse(storedPay) : DEFAULT_PAYMENTS);
 
-        if (storedRole) {
-          setSimulatedRoleState(storedRole as UserRole);
-        } else {
-          setSimulatedRoleState('client');
-          await AsyncStorage.setItem('app_simulated_role', 'client');
-        }
+        // Profile details (local cache; authoritative data is in Supabase profiles)
+        const storedProfile = await AsyncStorage.getItem('app_profile_details');
+        setProfileDetails(storedProfile ? JSON.parse(storedProfile) : DEFAULT_PROFILE);
 
-        if (storedSimRestId) {
-          setSimulatedRestaurantIdState(storedSimRestId);
-        } else {
-          setSimulatedRestaurantIdState('1');
-          await AsyncStorage.setItem('app_simulated_rest_id', '1');
-        }
+        // Developer simulation state
+        const storedRole = await AsyncStorage.getItem('app_simulated_role');
+        setSimulatedRoleState((storedRole as UserRole) || 'client');
+        const storedSimRestId = await AsyncStorage.getItem('app_simulated_rest_id');
+        setSimulatedRestaurantIdState(storedSimRestId || '1');
+
       } catch (e) {
-        console.error('Error loading data context', e);
+        console.error('DataContext: error loading data', e);
         setRestaurants(RESTAURANTS);
         setMenuItems(MENU_ITEMS);
         setOrders(DEFAULT_ORDERS);
@@ -289,6 +428,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         setProfileDetails(DEFAULT_PROFILE);
         setSimulatedRoleState('client');
         setSimulatedRestaurantIdState('1');
+        setReviews(DEFAULT_REVIEWS);
       } finally {
         setIsLoading(false);
       }
@@ -296,62 +436,114 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     loadData();
   }, []);
 
+  // ── Local storage helper ────────────────────────────────────────────────────
+
   const saveToStorage = async (key: string, data: any) => {
     try {
       await AsyncStorage.setItem(key, JSON.stringify(data));
     } catch (e) {
-      console.error(`Error saving ${key} to storage`, e);
+      console.error(`DataContext: error saving ${key}`, e);
     }
   };
 
-  const addMenuItem = (item: Omit<MenuItem, 'id'>) => {
-    const newItem: MenuItem = {
-      ...item,
-      id: 'm_' + Date.now(),
-    };
+  // ── Menu item CRUD ──────────────────────────────────────────────────────────
+
+  const addMenuItem = async (item: Omit<MenuItem, 'id'>) => {
+    const newItem: MenuItem = { ...item, id: 'm_' + Date.now() };
     const updated = [...menuItems, newItem];
     setMenuItems(updated);
-    saveToStorage('app_menu_items', updated);
+
+    await supabase.from('menu_items').insert({
+      id: newItem.id,
+      restaurant_id: newItem.restaurantId,
+      name: newItem.name,
+      description: newItem.description,
+      price: newItem.price,
+      image_url: newItem.imageUrl,
+      category: newItem.category,
+      popular: newItem.popular ?? false,
+      modifier_groups: newItem.modifierGroups ?? null,
+    });
   };
 
-  const updateMenuItem = (item: MenuItem) => {
+  const updateMenuItem = async (item: MenuItem) => {
     const updated = menuItems.map((m) => (m.id === item.id ? item : m));
     setMenuItems(updated);
-    saveToStorage('app_menu_items', updated);
+
+    await supabase.from('menu_items').update({
+      restaurant_id: item.restaurantId,
+      name: item.name,
+      description: item.description,
+      price: item.price,
+      image_url: item.imageUrl,
+      category: item.category,
+      popular: item.popular ?? false,
+      modifier_groups: item.modifierGroups ?? null,
+    }).eq('id', item.id);
   };
 
-  const deleteMenuItem = (id: string) => {
+  const deleteMenuItem = async (id: string) => {
     const updated = menuItems.filter((m) => m.id !== id);
     setMenuItems(updated);
-    saveToStorage('app_menu_items', updated);
+    await supabase.from('menu_items').delete().eq('id', id);
   };
 
-  const addRestaurant = (restaurant: Omit<Restaurant, 'id'>) => {
-    const newRest: Restaurant = {
-      ...restaurant,
-      id: 'r_' + Date.now(),
-    };
+  // ── Restaurant CRUD ─────────────────────────────────────────────────────────
+
+  const addRestaurant = async (restaurant: Omit<Restaurant, 'id'>) => {
+    const newRest: Restaurant = { ...restaurant, id: 'r_' + Date.now() };
     const updated = [...restaurants, newRest];
     setRestaurants(updated);
-    saveToStorage('app_restaurants', updated);
+
+    await supabase.from('restaurants').insert({
+      id: newRest.id,
+      name: newRest.name,
+      cuisine: newRest.cuisine,
+      rating: newRest.rating,
+      review_count: newRest.reviewCount,
+      delivery_time: newRest.deliveryTime,
+      delivery_fee: newRest.deliveryFee,
+      min_order: newRest.minOrder,
+      image_url: newRest.imageUrl,
+      categories: newRest.categories,
+      featured: newRest.featured ?? false,
+      price_range: newRest.priceRange,
+      description: newRest.description,
+    });
   };
 
-  const updateRestaurant = (restaurant: Restaurant) => {
+  const updateRestaurant = async (restaurant: Restaurant) => {
     const updated = restaurants.map((r) => (r.id === restaurant.id ? restaurant : r));
     setRestaurants(updated);
-    saveToStorage('app_restaurants', updated);
+
+    await supabase.from('restaurants').update({
+      name: restaurant.name,
+      cuisine: restaurant.cuisine,
+      rating: restaurant.rating,
+      review_count: restaurant.reviewCount,
+      delivery_time: restaurant.deliveryTime,
+      delivery_fee: restaurant.deliveryFee,
+      min_order: restaurant.minOrder,
+      image_url: restaurant.imageUrl,
+      categories: restaurant.categories,
+      featured: restaurant.featured ?? false,
+      price_range: restaurant.priceRange,
+      description: restaurant.description,
+    }).eq('id', restaurant.id);
   };
 
-  const deleteRestaurant = (id: string) => {
-    const updated = restaurants.filter((r) => r.id !== id);
+  const deleteRestaurant = async (id: string) => {
+    const updatedRest = restaurants.filter((r) => r.id !== id);
     const updatedMenu = menuItems.filter((m) => m.restaurantId !== id);
-    setRestaurants(updated);
+    setRestaurants(updatedRest);
     setMenuItems(updatedMenu);
-    saveToStorage('app_restaurants', updated);
-    saveToStorage('app_menu_items', updatedMenu);
+    await supabase.from('menu_items').delete().eq('restaurant_id', id);
+    await supabase.from('restaurants').delete().eq('id', id);
   };
 
-  const addOrder = (
+  // ── Orders ──────────────────────────────────────────────────────────────────
+
+  const addOrder = async (
     restaurantId: string,
     itemNames: string[],
     total: number,
@@ -364,9 +556,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   ) => {
     const now = new Date();
     const timeString = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const dateString = now.toLocaleDateString() === new Date().toLocaleDateString() 
-      ? `Today, ${timeString}` 
-      : `${now.toLocaleDateString()}, ${timeString}`;
+    const dateString =
+      now.toLocaleDateString() === new Date().toLocaleDateString()
+        ? `Today, ${timeString}`
+        : `${now.toLocaleDateString()}, ${timeString}`;
 
     const newOrder: Order = {
       id: 'o_' + Date.now(),
@@ -383,106 +576,174 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       promoCodeUsed,
       paymentMethod,
     };
+
     const updated = [newOrder, ...orders];
     setOrders(updated);
     saveToStorage('app_orders', updated);
+
+    const userId = await getCurrentUserId();
+    if (userId) {
+      await supabase.from('orders').insert({
+        id: newOrder.id,
+        user_id: userId,
+        restaurant_id: newOrder.restaurantId,
+        items: newOrder.items,
+        items_raw: newOrder.itemsRaw ?? null,
+        reviewed: false,
+        total: newOrder.total,
+        status: newOrder.status,
+        date: newOrder.date,
+        address_label: newOrder.addressLabel ?? null,
+        address_details: newOrder.addressDetails ?? null,
+        discount_applied: newOrder.discountApplied ?? null,
+        promo_code_used: newOrder.promoCodeUsed ?? null,
+        payment_method: newOrder.paymentMethod ?? null,
+      });
+    }
   };
 
-  const submitReview = useCallback((restaurantId: string, stars: number, comment: string) => {
+  const updateOrderStatus = async (id: string, status: Order['status']) => {
+    const updated = orders.map((o) => (o.id === id ? { ...o, status } : o));
+    setOrders(updated);
+    saveToStorage('app_orders', updated);
+    await supabase.from('orders').update({ status }).eq('id', id);
+  };
+
+  // ── Reviews ─────────────────────────────────────────────────────────────────
+
+  const submitReview = useCallback(async (restaurantId: string, stars: number, comment: string) => {
+    // Update local restaurant rating
     setRestaurants((prev) => {
       const next = prev.map((rest) => {
         if (rest.id === restaurantId) {
           const newCount = rest.reviewCount + 1;
-          const newRating = ((rest.rating * rest.reviewCount) + stars) / newCount;
-          return {
-            ...rest,
-            reviewCount: newCount,
-            rating: Number(newRating.toFixed(1)),
-          };
+          const newRating = Number(
+            ((rest.rating * rest.reviewCount + stars) / newCount).toFixed(1)
+          );
+          return { ...rest, reviewCount: newCount, rating: newRating };
         }
         return rest;
       });
-      saveToStorage('app_restaurants', next);
+
+      // Persist updated rating to Supabase
+      const target = next.find((r) => r.id === restaurantId);
+      if (target) {
+        supabase
+          .from('restaurants')
+          .update({ rating: target.rating, review_count: target.reviewCount })
+          .eq('id', restaurantId);
+      }
+
       return next;
     });
 
-    setReviews((prev) => {
-      const newReview: Review = {
-        id: 'rev_' + Date.now(),
-        restaurantId,
-        userName: profileDetails.fullName || 'Anonymous',
-        rating: stars,
-        comment,
-        date: 'Just now',
-      };
-      const next = [newReview, ...prev];
-      saveToStorage('app_reviews', next);
-      return next;
+    const newReview: Review = {
+      id: 'rev_' + Date.now(),
+      restaurantId,
+      userName: profileDetails.fullName || 'Anonymous',
+      rating: stars,
+      comment,
+      date: 'Just now',
+    };
+
+    setReviews((prev) => [newReview, ...prev]);
+
+    await supabase.from('reviews').insert({
+      id: newReview.id,
+      restaurant_id: newReview.restaurantId,
+      user_name: newReview.userName,
+      rating: newReview.rating,
+      comment: newReview.comment,
+      date: newReview.date,
     });
   }, [profileDetails.fullName]);
 
-  const markOrderReviewed = useCallback((orderId: string) => {
+  const markOrderReviewed = useCallback(async (orderId: string) => {
     setOrders((prev) => {
-      const next = prev.map((order) => {
-        if (order.id === orderId) {
-          return {
-            ...order,
-            reviewed: true,
-          };
-        }
-        return order;
-      });
+      const next = prev.map((order) =>
+        order.id === orderId ? { ...order, reviewed: true } : order
+      );
       saveToStorage('app_orders', next);
       return next;
     });
+    await supabase.from('orders').update({ reviewed: true }).eq('id', orderId);
   }, []);
 
-  const updateOrderStatus = (id: string, status: Order['status']) => {
-    const updated = orders.map((o) => (o.id === id ? { ...o, status } : o));
-    setOrders(updated);
-    saveToStorage('app_orders', updated);
-  };
+  // ── Favorites ───────────────────────────────────────────────────────────────
 
-  const toggleFavorite = (restaurantId: string) => {
-    let updated: string[];
-    if (favorites.includes(restaurantId)) {
-      updated = favorites.filter((id) => id !== restaurantId);
-    } else {
-      updated = [...favorites, restaurantId];
-    }
+  const toggleFavorite = async (restaurantId: string) => {
+    const isFav = favorites.includes(restaurantId);
+    const updated = isFav
+      ? favorites.filter((id) => id !== restaurantId)
+      : [...favorites, restaurantId];
+
     setFavorites(updated);
     saveToStorage('app_favorites', updated);
+
+    const userId = await getCurrentUserId();
+    if (userId) {
+      if (isFav) {
+        await supabase
+          .from('user_favorites')
+          .delete()
+          .eq('user_id', userId)
+          .eq('restaurant_id', restaurantId);
+      } else {
+        await supabase
+          .from('user_favorites')
+          .insert({ user_id: userId, restaurant_id: restaurantId });
+      }
+    }
   };
 
-  const addAddress = (address: Omit<Address, 'id'>) => {
-    const newAddress: Address = {
-      ...address,
-      id: 'a_' + Date.now(),
-    };
+  // ── Addresses ───────────────────────────────────────────────────────────────
+
+  const addAddress = async (address: Omit<Address, 'id'>) => {
+    const newAddress: Address = { ...address, id: 'a_' + Date.now() };
     const updated = [...addresses, newAddress];
     setAddresses(updated);
     saveToStorage('app_addresses', updated);
+
+    const userId = await getCurrentUserId();
+    if (userId) {
+      await supabase.from('user_addresses').insert({
+        id: newAddress.id,
+        user_id: userId,
+        label: newAddress.label,
+        details: newAddress.details,
+        notes: newAddress.notes ?? null,
+      });
+    }
   };
 
-  const updateAddress = (address: Address) => {
+  const updateAddress = async (address: Address) => {
     const updated = addresses.map((a) => (a.id === address.id ? address : a));
     setAddresses(updated);
     saveToStorage('app_addresses', updated);
+
+    await supabase.from('user_addresses').update({
+      label: address.label,
+      details: address.details,
+      notes: address.notes ?? null,
+    }).eq('id', address.id);
   };
 
-  const deleteAddress = (id: string) => {
+  const deleteAddress = async (id: string) => {
     const updated = addresses.filter((a) => a.id !== id);
     setAddresses(updated);
     saveToStorage('app_addresses', updated);
+    await supabase.from('user_addresses').delete().eq('id', id);
   };
+
+  // ── Payment methods (local only) ────────────────────────────────────────────
 
   const addPaymentMethod = (card: { cardholderName: string; cardNumber: string; expiryDate: string }) => {
     const cleanNum = card.cardNumber.replace(/\s/g, '');
     const last4 = cleanNum.slice(-4);
-    const cardType = cleanNum.startsWith('4') 
-      ? 'Visa' 
-      : cleanNum.startsWith('5') 
-      ? 'Mastercard' 
+    const cardType = cleanNum.startsWith('4')
+      ? 'Visa'
+      : cleanNum.startsWith('5')
+      ? 'Mastercard'
       : 'Generic';
 
     const newCard: PaymentMethod = {
@@ -503,10 +764,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     saveToStorage('app_payment_methods', updated);
   };
 
+  // ── Profile ─────────────────────────────────────────────────────────────────
+
   const updateProfileDetails = (profile: ProfileDetails) => {
     setProfileDetails(profile);
     saveToStorage('app_profile_details', profile);
   };
+
+  // ── Role simulation ─────────────────────────────────────────────────────────
 
   const setSimulatedRole = (role: UserRole) => {
     setSimulatedRoleState(role);
@@ -518,6 +783,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     saveToStorage('app_simulated_rest_id', id);
   };
 
+  // ── Reset ────────────────────────────────────────────────────────────────────
+
   const resetData = async () => {
     setRestaurants(RESTAURANTS);
     setMenuItems(MENU_ITEMS);
@@ -528,15 +795,23 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setProfileDetails(DEFAULT_PROFILE);
     setSimulatedRoleState('client');
     setSimulatedRestaurantIdState('1');
-    await AsyncStorage.removeItem('app_restaurants');
-    await AsyncStorage.removeItem('app_menu_items');
-    await AsyncStorage.removeItem('app_orders');
-    await AsyncStorage.removeItem('app_favorites');
-    await AsyncStorage.removeItem('app_addresses');
-    await AsyncStorage.removeItem('app_payment_methods');
-    await AsyncStorage.removeItem('app_profile_details');
-    await AsyncStorage.removeItem('app_simulated_role');
-    await AsyncStorage.removeItem('app_simulated_rest_id');
+    setReviews(DEFAULT_REVIEWS);
+
+    // Re-seed Supabase
+    await seedRestaurantsToSupabase();
+    await seedMenuItemsToSupabase();
+    await seedReviewsToSupabase();
+
+    await AsyncStorage.multiRemove([
+      'app_orders',
+      'app_favorites',
+      'app_addresses',
+      'app_payment_methods',
+      'app_profile_details',
+      'app_simulated_role',
+      'app_simulated_rest_id',
+      'app_reviews',
+    ]);
   };
 
   return (
@@ -580,8 +855,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
 export function useData() {
   const context = useContext(DataContext);
-  if (!context) {
-    throw new Error('useData must be used within a DataProvider');
-  }
+  if (!context) throw new Error('useData must be used within a DataProvider');
   return context;
 }

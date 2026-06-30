@@ -261,4 +261,54 @@ Actions taken:
 
 ---
 
+SESSION 12 — Full Supabase Data Integration & Presentation Readiness
+--------------------------------------------------------------------
+
+PROMPT 13 (Supabase Integration & Deployment Preparation):
+"I need to make everything linked with Supabase — including the food items and restaurants —
+and the app should be fully launchable as I have a university presentation coming up.
+Please commit the changes to GitHub and append these prompts to AI-log.txt in a professional format."
+
+Translation: English
+
+Actions taken:
+- Completely rewrote `context/DataContext.tsx` to use Supabase as the primary data source for
+  all shared and user-specific application data, replacing the previous AsyncStorage-only approach.
+- Restaurants: fetched from the `restaurants` Supabase table on startup; auto-seeded with mock
+  data on first launch if the table is empty. All admin CRUD operations (add, update, delete)
+  are now written directly to Supabase and reflected in real-time across all screens.
+- Menu Items: fetched from the `menu_items` Supabase table on startup; auto-seeded on first
+  launch. CRUD operations from the admin dashboard persist to Supabase immediately.
+- Orders: saved to the `orders` Supabase table keyed by `user_id` when the user is authenticated.
+  Guest sessions fall back to AsyncStorage. Order status updates (admin panel) are written to
+  Supabase so restaurant admins and employees see live status changes.
+- Reviews: stored in the `reviews` Supabase table; seeded with default review entries on first
+  launch. New reviews submitted via the post-order modal are inserted directly into Supabase,
+  and the corresponding restaurant rating is updated in the `restaurants` table atomically.
+- Favorites: stored per user in the `user_favorites` Supabase table (user_id + restaurant_id
+  composite key). Toggle actions sync instantly; unauthenticated users fall back to AsyncStorage.
+- Addresses: stored per user in the `user_addresses` Supabase table. Add, edit, and delete
+  operations sync to Supabase when the user is authenticated.
+- Payment methods: kept local (AsyncStorage only) for PCI compliance — card data is never
+  transmitted to or stored in Supabase.
+- Implemented row mapper helper functions (`mapDbRestaurant`, `mapDbMenuItem`, `mapDbOrder`,
+  `mapDbReview`) to handle the snake_case ↔ camelCase conversion between Supabase and
+  TypeScript model types.
+- Added auto-seeding logic: on first launch the app checks whether each Supabase table is
+  empty, and if so, performs an `upsert` with the complete mock dataset. This ensures the app
+  is immediately demo-ready without any manual database setup beyond running the schema SQL.
+- Updated `README.md` with the complete 7-table Supabase SQL schema (profiles, restaurants,
+  menu_items, orders, reviews, user_favorites, user_addresses) including Row Level Security
+  policies for all tables and instructions to promote a user to admin.
+- Committed all changes to the GitHub repository on the `main` branch.
+
+Key architecture decisions:
+- Supabase is the authoritative source for all shared data (restaurants, menu items, reviews).
+- User-specific data (orders, favorites, addresses) is scoped by `user_id` via RLS.
+- AsyncStorage serves as an offline fallback for guest users and local preferences.
+- All mutation functions remain synchronous from the caller's perspective (fire-and-forget
+  Supabase writes), keeping UI interactions instant with no loading spinners on mutations.
+
+---
+
 END OF LOG

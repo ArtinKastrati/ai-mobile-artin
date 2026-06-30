@@ -1,14 +1,17 @@
 # 🍔 FoodRush
 
-A modern food delivery mobile app built with **React Native + Expo**, featuring restaurant discovery, menu browsing, cart management, and user authentication with role-based access.
+A modern food delivery mobile app built with **React Native + Expo**, featuring restaurant discovery, menu browsing, cart management, and user authentication with role-based access. All data is persisted live in **Supabase**.
 
 ## Features
 
-- **Discover** — Browse featured and categorized restaurants
+- **Discover** — Browse featured and categorized restaurants (live from Supabase)
 - **Search** — Filter by cuisine, name, and category
-- **Cart** — Add items, adjust quantities, checkout flow
-- **Orders** — View order history and live status tracking
-- **Auth** — Sign up / sign in with email & password (Supabase)
+- **Cart** — Add items with customization modifiers, adjust quantities, checkout flow
+- **Orders** — View order history and live status tracking (synced to Supabase)
+- **Reviews** — Post restaurant reviews and ratings (stored in Supabase)
+- **Favorites** — Bookmark restaurants (persisted per user in Supabase)
+- **Addresses** — Manage saved delivery addresses (synced to Supabase)
+- **Auth** — Sign up / sign in with email & password (Supabase Auth)
 - **Roles** — `client`, `admin`, `restaurant_admin`, and `employee`
 - **Admin Panel** — Manage users, restaurants, menu items, and order status by role
 
@@ -18,11 +21,11 @@ A modern food delivery mobile app built with **React Native + Expo**, featuring 
 |---|---|
 | Framework | React Native + Expo SDK 54 |
 | Navigation | Expo Router v6 (file-based) |
-| Backend / Auth / DB | Supabase |
+| Backend / Auth / DB | Supabase (PostgreSQL) |
 | Server State | TanStack React Query |
 | Animations | React Native Reanimated |
 | Fonts | Google Fonts – Nunito |
-| Storage | AsyncStorage + expo-secure-store |
+| Storage | Supabase + AsyncStorage fallback |
 
 ## Project Structure
 
@@ -37,7 +40,7 @@ components/        # Reusable UI components
 context/           # Auth, cart, data, notification, and preferences contexts
 hooks/             # useColors (theme)
 lib/               # Supabase client, QueryClient, haptics
-data/              # Mock restaurant & menu data
+data/              # Seed data (restaurants, menu items)
 ```
 
 ## Getting Started
@@ -48,7 +51,7 @@ data/              # Mock restaurant & menu data
 
 ### Environment Variables
 
-Set these in Replit Secrets:
+Create a `.env` file in the project root:
 
 ```
 EXPO_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
@@ -57,20 +60,23 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 
 ### Supabase Setup
 
-Run the following SQL in your Supabase **SQL Editor** to enable profiles and roles:
+Run all of the following SQL blocks in your Supabase **SQL Editor** (Dashboard → SQL Editor → New Query).
+
+#### 1. Profiles & Auth
 
 ```sql
 create table public.profiles (
   id uuid references auth.users on delete cascade primary key,
   full_name text,
   email text,
-  role text not null default 'client' check (role in ('client', 'admin')),
+  role text not null default 'client'
+    check (role in ('client', 'admin', 'restaurant_admin', 'employee')),
+  restaurant_id text,
   created_at timestamptz default now()
 );
 
 alter table public.profiles enable row level security;
 
--- Create helper function to check admin role (security definer avoids recursion)
 create or replace function public.is_admin()
 returns boolean security definer as $$
 begin
@@ -82,16 +88,10 @@ end;
 $$ language plpgsql;
 
 create policy "Users can view own profile" on public.profiles
-  for select using (
-    auth.uid() = id
-    or public.is_admin()
-  );
+  for select using (auth.uid() = id or public.is_admin());
 
 create policy "Users can update own profile" on public.profiles
-  for update using (
-    auth.uid() = id
-    or public.is_admin()
-  );
+  for update using (auth.uid() = id or public.is_admin());
 
 create policy "Users can insert own profile" on public.profiles
   for insert with check (auth.uid() = id);
@@ -110,15 +110,150 @@ create trigger on_auth_user_created
   for each row execute procedure public.handle_new_user();
 ```
 
-### Multi-Role Migration SQL (Session 8)
-Run the following SQL in your Supabase SQL editor to enable the new partner roles and link profiles to restaurants:
+#### 2. Restaurants
+
 ```sql
-alter table public.profiles drop constraint if exists profiles_role_check;
-alter table public.profiles add constraint profiles_role_check check (role in ('client', 'admin', 'restaurant_admin', 'employee'));
-alter table public.profiles add column if not exists restaurant_id text;
+create table public.restaurants (
+  id text primary key,
+  name text not null,
+  cuisine text,
+  rating numeric default 0,
+  review_count int default 0,
+  delivery_time text,
+  delivery_fee numeric default 0,
+  min_order numeric default 0,
+  image_url text,
+  categories text[],
+  featured boolean default false,
+  price_range text,
+  description text
+);
+
+alter table public.restaurants enable row level security;
+
+-- Anyone can read restaurants
+create policy "Public read" on public.restaurants
+  for select using (true);
+
+-- Only admins can write
+create policy "Admin write" on public.restaurants
+  for all using (public.is_admin());
 ```
 
-To promote yourself to admin:
+#### 3. Menu Items
+
+```sql
+create table public.menu_items (
+  id text primary key,
+  restaurant_id text references public.restaurants(id) on delete cascade,
+  name text not null,
+  description text,
+  price numeric,
+  image_url text,
+  category text,
+  popular boolean default false,
+  modifier_groups jsonb
+);
+
+alter table public.menu_items enable row level security;
+
+create policy "Public read" on public.menu_items
+  for select using (true);
+
+create policy "Admin write" on public.menu_items
+  for all using (public.is_admin());
+```
+
+#### 4. Orders
+
+```sql
+create table public.orders (
+  id text primary key,
+  user_id uuid references auth.users(id) on delete cascade,
+  restaurant_id text references public.restaurants(id),
+  items text[],
+  items_raw jsonb,
+  reviewed boolean default false,
+  total numeric,
+  status text default 'pending',
+  date text,
+  address_label text,
+  address_details text,
+  discount_applied numeric,
+  promo_code_used text,
+  payment_method text,
+  created_at timestamptz default now()
+);
+
+alter table public.orders enable row level security;
+
+create policy "Users see own orders" on public.orders
+  for select using (auth.uid() = user_id or public.is_admin());
+
+create policy "Users insert own orders" on public.orders
+  for insert with check (auth.uid() = user_id);
+
+create policy "Users update own orders" on public.orders
+  for update using (auth.uid() = user_id or public.is_admin());
+```
+
+#### 5. Reviews
+
+```sql
+create table public.reviews (
+  id text primary key,
+  restaurant_id text references public.restaurants(id) on delete cascade,
+  user_id uuid references auth.users(id),
+  user_name text,
+  rating int,
+  comment text,
+  date text,
+  created_at timestamptz default now()
+);
+
+alter table public.reviews enable row level security;
+
+create policy "Public read" on public.reviews
+  for select using (true);
+
+create policy "Authenticated insert" on public.reviews
+  for insert with check (auth.role() = 'authenticated');
+```
+
+#### 6. Favorites
+
+```sql
+create table public.user_favorites (
+  user_id uuid references auth.users(id) on delete cascade,
+  restaurant_id text references public.restaurants(id) on delete cascade,
+  primary key (user_id, restaurant_id)
+);
+
+alter table public.user_favorites enable row level security;
+
+create policy "Users manage own favorites" on public.user_favorites
+  for all using (auth.uid() = user_id);
+```
+
+#### 7. Addresses
+
+```sql
+create table public.user_addresses (
+  id text primary key,
+  user_id uuid references auth.users(id) on delete cascade,
+  label text,
+  details text,
+  notes text
+);
+
+alter table public.user_addresses enable row level security;
+
+create policy "Users manage own addresses" on public.user_addresses
+  for all using (auth.uid() = user_id);
+```
+
+#### 8. Promote a user to Admin
+
 ```sql
 update public.profiles set role = 'admin' where email = 'your@email.com';
 ```
@@ -127,12 +262,16 @@ update public.profiles set role = 'admin' where email = 'your@email.com';
 
 ```bash
 npm install
-npx expo start --web --port 5000
+npx expo start --web --port 8081
+# or for mobile
+npx expo start
 ```
+
+The app auto-seeds restaurants, menu items, and reviews into Supabase on first launch. Subsequent starts read directly from the database.
 
 ## Deployment
 
-Hosted on [Replit](https://replit.com). The app runs as a web SPA via Metro bundler on port 5000.
+Hosted on [Replit](https://replit.com). The app runs as a web SPA via Metro bundler.
 
 ---
 
