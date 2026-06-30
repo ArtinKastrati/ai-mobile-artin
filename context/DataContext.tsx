@@ -247,6 +247,38 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     return data.user?.id ?? null;
   };
 
+  const fetchUserSpecificData = async (userId: string) => {
+    try {
+      const { data: ordersData } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+      if (ordersData) setOrders(ordersData.map(mapDbOrder));
+
+      const { data: favsData } = await supabase
+        .from('user_favorites')
+        .select('restaurant_id')
+        .eq('user_id', userId);
+      if (favsData) setFavorites(favsData.map((f: any) => f.restaurant_id));
+
+      const { data: addrData } = await supabase
+        .from('user_addresses')
+        .select('*')
+        .eq('user_id', userId);
+      if (addrData && addrData.length > 0) {
+        setAddresses(addrData.map((a: any) => ({
+          id: a.id,
+          label: a.label,
+          details: a.details,
+          notes: a.notes ?? undefined,
+        })));
+      }
+    } catch (e) {
+      console.error('DataContext: error fetching user data', e);
+    }
+  };
+
   // ── Seeding helpers ────────────────────────────────────────────────────────
 
   const seedRestaurantsToSupabase = async () => {
@@ -294,6 +326,23 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }));
     await supabase.from('reviews').upsert(rows, { onConflict: 'id' });
   };
+
+  // ── Auth state change listener ───────────────────────────────────────────────
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session?.user) {
+        await fetchUserSpecificData(session.user.id);
+      } else if (event === 'SIGNED_OUT') {
+        setOrders(DEFAULT_ORDERS);
+        setFavorites([]);
+        setAddresses(DEFAULT_ADDRESSES);
+        saveToStorage('app_orders', DEFAULT_ORDERS);
+        saveToStorage('app_favorites', []);
+        saveToStorage('app_addresses', DEFAULT_ADDRESSES);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
 
   // ── Initial load ────────────────────────────────────────────────────────────
 

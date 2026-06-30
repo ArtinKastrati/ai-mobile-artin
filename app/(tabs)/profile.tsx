@@ -56,6 +56,21 @@ export default function ProfileScreen() {
 
   const topPadding = Platform.OS === 'web' ? 67 : insets.top;
 
+  const requireAuth = (action: () => void) => {
+    if (!session) {
+      Alert.alert(
+        'Sign In Required',
+        'Please sign in to access this feature.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Sign In', onPress: () => router.push('/auth') },
+        ]
+      );
+      return;
+    }
+    action();
+  };
+
   const handleSignOut = async () => {
     haptics.medium();
     Alert.alert(
@@ -323,9 +338,9 @@ export default function ProfileScreen() {
 
       <View style={styles.section}>
         <Text style={[styles.sectionLabel, { color: colors.muted }]}>{t('profile.account')}</Text>
-        <MenuItem icon="person-outline" label={t('profile.editProfile')} onPress={() => { haptics.medium(); router.push('/profile/edit'); }} />
-        <MenuItem icon="location-outline" label={t('profile.savedAddresses')} onPress={() => { haptics.medium(); router.push('/profile/addresses'); }} />
-        <MenuItem icon="card-outline" label={t('profile.paymentMethods')} onPress={() => { haptics.medium(); router.push('/profile/payment'); }} />
+        <MenuItem icon="person-outline" label={t('profile.editProfile')} onPress={() => { haptics.medium(); requireAuth(() => router.push('/profile/edit')); }} />
+        <MenuItem icon="location-outline" label={t('profile.savedAddresses')} onPress={() => { haptics.medium(); requireAuth(() => router.push('/profile/addresses')); }} />
+        <MenuItem icon="card-outline" label={t('profile.paymentMethods')} onPress={() => { haptics.medium(); requireAuth(() => router.push('/profile/payment')); }} />
       </View>
 
       <View style={styles.section}>

@@ -19,12 +19,14 @@ import { Image } from 'expo-image';
 import { haptics } from '@/lib/haptics';
 import { usePreferences } from '@/context/PreferencesContext';
 import { useData } from '@/context/DataContext';
+import { useAuth } from '@/context/AuthContext';
 
 export default function CheckoutScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { t } = usePreferences();
   const { promoCode: promoParam } = useLocalSearchParams<{ promoCode?: string }>();
+  const { session } = useAuth();
   const { addresses, paymentMethods, addOrder } = useData();
   const { items, restaurant, total, clearCart } = useCart();
 
@@ -78,6 +80,18 @@ export default function CheckoutScreen() {
   };
 
   const handlePlaceOrder = async () => {
+    if (!session) {
+      Alert.alert(
+        'Sign In Required',
+        'You need to be signed in to place an order.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Sign In', onPress: () => router.push('/auth') },
+        ]
+      );
+      return;
+    }
+
     const selectedAddress = addresses.find((a) => a.id === selectedAddressId);
     if (!selectedAddress) {
       Alert.alert(t('checkout.addressRequired'), t('checkout.pleaseEnterAddress'));

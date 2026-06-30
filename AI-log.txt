@@ -311,4 +311,59 @@ Key architecture decisions:
 
 ---
 
+SESSION 13 — Guest Mode Fix, Auth Gate Hardening & UX Polish
+------------------------------------------------------------
+
+PROMPT 14 (Bug Report & Comprehensive Review Request):
+"Continue as Guest is not working correctly — can you check the app and see the issues that it
+have and need fixing, removing, or adding — do it all and then I can test it. Also don't forget
+to always add the things to AI-log.txt but don't commit to GitHub without me saying to do it."
+
+Translation: English
+
+Issues identified and resolved:
+
+1. "Continue as Guest" Redirect Loop
+   Root cause: The auth gate in `_layout.tsx` watches for a missing session and immediately
+   redirects back to `/auth`, trapping the user in an infinite loop.
+   Fix: Added `isGuestMode` boolean state and `setGuestMode(value)` method to `AuthContext`.
+   The "Continue as Guest" button now calls `setGuestMode(true)` before navigating to the tabs,
+   and the auth gate skips the redirect when guest mode is active. On sign-out, `isGuestMode`
+   is reset to false so the next launch correctly shows the auth screen again.
+
+2. User-Specific Data Not Refreshing After Login
+   Root cause: `DataContext` loaded orders, favorites, and addresses once on mount. If a guest
+   later signed in, their Supabase data was never fetched.
+   Fix: Added a `supabase.auth.onAuthStateChange` listener inside `DataContext`. On
+   `SIGNED_IN`, the new `fetchUserSpecificData(userId)` helper is called to re-fetch orders,
+   favorites, and addresses from Supabase for the authenticated user. On `SIGNED_OUT`, those
+   fields are reset to sensible defaults and AsyncStorage is cleared.
+
+3. Guests Could Reach Checkout and Place Orders
+   Root cause: No authentication check in `checkout.tsx`.
+   Fix: Added a session guard at the top of `handlePlaceOrder`. If no session exists, an alert
+   is shown with a "Sign In" shortcut button that navigates to `/auth`. The order placement flow
+   is blocked until the user authenticates.
+
+4. Account Sub-Menu Accessible Without Login
+   Root cause: Profile screen's "Edit Profile", "Saved Addresses", and "Payment Methods" rows
+   navigated directly to protected screens regardless of auth state.
+   Fix: Added a `requireAuth(action)` helper in `ProfileScreen` that wraps each route push.
+   Guest users who tap these items see an alert prompting them to sign in, with a direct link
+   to the auth screen.
+
+5. Sign-Out Did Not Reset Guest Mode
+   Fix: `signOut()` in `AuthContext` now calls `setIsGuestModeState(false)` so that signing
+   out correctly re-triggers the auth gate on the next navigation.
+
+Files modified:
+  context/AuthContext.tsx    — isGuestMode state, setGuestMode, signOut reset
+  app/_layout.tsx            — auth gate updated to respect isGuestMode
+  app/auth.tsx               — "Continue as Guest" calls setGuestMode(true)
+  context/DataContext.tsx    — auth state change listener + fetchUserSpecificData helper
+  app/checkout.tsx           — session guard before order placement
+  app/(tabs)/profile.tsx     — requireAuth wrapper on account sub-menu items
+
+---
+
 END OF LOG

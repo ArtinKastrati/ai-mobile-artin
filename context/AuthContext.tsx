@@ -19,6 +19,8 @@ type AuthContextType = {
   profile: Profile | null;
   role: UserRole | null;
   loading: boolean;
+  isGuestMode: boolean;
+  setGuestMode: (value: boolean) => void;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signUp: (email: string, password: string, fullName: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
@@ -32,6 +34,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isGuestMode, setIsGuestModeState] = useState(false);
+
+  const setGuestMode = (value: boolean) => setIsGuestModeState(value);
 
   const fetchProfile = async (userId: string) => {
     try {
@@ -102,6 +107,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = async () => {
     await supabase.auth.signOut();
     setProfile(null);
+    setIsGuestModeState(false);
   };
 
   return (
@@ -111,6 +117,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       profile,
       role: profile?.role ?? null,
       loading,
+      isGuestMode,
+      setGuestMode,
       signIn,
       signUp,
       signOut,

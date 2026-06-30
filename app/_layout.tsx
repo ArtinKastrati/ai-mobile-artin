@@ -30,20 +30,20 @@ function AppContent() {
     statusStyle = systemScheme === 'dark' ? 'light' : 'dark';
   }
 
-  const { session, loading: authLoading } = useAuth();
+  const { session, loading: authLoading, isGuestMode } = useAuth();
   const segments = useSegments();
   const { orders } = useData();
   const { showNotification } = useNotification();
   const prevOrdersRef = useRef<any[]>([]);
 
-  // Auth gate: redirect unauthenticated users to the auth screen
+  // Auth gate: redirect unauthenticated non-guest users to the auth screen
   useEffect(() => {
     if (authLoading) return;
     const inAuthScreen = segments[0] === 'auth';
-    if (!session && !inAuthScreen) {
+    if (!session && !isGuestMode && !inAuthScreen) {
       router.replace('/auth');
     }
-  }, [session, authLoading, segments]);
+  }, [session, authLoading, isGuestMode, segments]);
 
   useEffect(() => {
     if (prevOrdersRef.current.length === 0) {

@@ -22,7 +22,7 @@ import { haptics } from '@/lib/haptics';
 export default function AuthScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, setGuestMode } = useAuth();
   const { t } = usePreferences();
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
@@ -75,6 +75,7 @@ export default function AuthScreen() {
           <TouchableOpacity
             onPress={() => {
               haptics.light();
+              setGuestMode(true);
               router.replace('/(tabs)');
             }}
             style={styles.guestBtn}
