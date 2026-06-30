@@ -126,7 +126,7 @@ export default function RestaurantScreen() {
                     color={restaurant.deliveryFee === 0 ? colors.success : colors.primary}
                   />
                   <Text style={[styles.badgeText, { color: restaurant.deliveryFee === 0 ? colors.success : colors.foreground }]}>
-                    {restaurant.deliveryFee === 0 ? t('restaurant.freeDelivery') : t('restaurant.delivery', { fee: '$' + restaurant.deliveryFee.toFixed(2) })}
+                    {restaurant.deliveryFee === 0 ? t('restaurant.freeDelivery') : t('restaurant.delivery', { fee: '€' + restaurant.deliveryFee.toFixed(2) })}
                   </Text>
                 </View>
               </View>

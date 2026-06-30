@@ -34,6 +34,23 @@ export default function AuthScreen() {
 
   const topPadding = Platform.OS === 'web' ? 67 : insets.top;
 
+  const friendlyError = (raw: string): string => {
+    const r = raw.toLowerCase();
+    if (r.includes('rate limit') || r.includes('email rate'))
+      return 'Supabase ka arritur limitin e emailave.\n\nZgjidhja: Shko te Supabase Dashboard → Authentication → Settings → çaktivizo "Enable email confirmations". Pastaj provoni përsëri.';
+    if (r.includes('invalid login') || r.includes('invalid credentials'))
+      return 'Email ose fjalëkalimi është i gabuar.';
+    if (r.includes('already registered') || r.includes('already been registered'))
+      return 'Ky email është tashmë i regjistruar. Provo të kyçesh.';
+    if (r.includes('password') && r.includes('6'))
+      return 'Fjalëkalimi duhet të ketë të paktën 6 karaktere.';
+    if (r.includes('invalid email') || r.includes('valid email'))
+      return 'Adresa email nuk është e vlefshme.';
+    if (r.includes('network') || r.includes('fetch'))
+      return 'Nuk ka lidhje interneti. Kontrollo rrjetin tënd.';
+    return raw;
+  };
+
   const handleSubmit = async () => {
     if (!email.trim() || !password.trim()) {
       Alert.alert(t('common.error'), t('auth.fillAllFields'));
@@ -44,7 +61,7 @@ export default function AuthScreen() {
     try {
       if (mode === 'signin') {
         const { error } = await signIn(email, password);
-        if (error) Alert.alert(t('auth.signInFailed'), error);
+        if (error) Alert.alert(t('auth.signInFailed'), friendlyError(error));
         else router.replace('/(tabs)');
       } else {
         if (!fullName.trim()) {
@@ -53,11 +70,20 @@ export default function AuthScreen() {
           return;
         }
         const { error } = await signUp(email, password, fullName);
-        if (error) Alert.alert(t('auth.signUpFailed'), error);
-        else {
-          Alert.alert(t('auth.accountCreated'), t('auth.confirmEmail'), [
-            { text: t('common.ok'), onPress: () => router.replace('/(tabs)') },
-          ]);
+        if (error) {
+          Alert.alert(t('auth.signUpFailed'), friendlyError(error));
+        } else {
+          // Try auto-sign-in immediately (works when email confirmation is disabled)
+          const { error: signInErr } = await signIn(email, password);
+          if (!signInErr) {
+            router.replace('/(tabs)');
+          } else {
+            Alert.alert(
+              t('auth.accountCreated'),
+              'Llogaria u krijua! Konfirmo emailin tënd pastaj kyçu.',
+              [{ text: t('common.ok'), onPress: () => setMode('signin') }]
+            );
+          }
         }
       }
     } finally {
@@ -80,7 +106,7 @@ export default function AuthScreen() {
             }}
             style={styles.guestBtn}
           >
-            <Text style={[styles.guestText, { color: colors.muted }]}>Continue as Guest</Text>
+            <Text style={[styles.guestText, { color: colors.muted }]}>Vazhdo si vizitor</Text>
             <Ionicons name="chevron-forward" size={16} color={colors.muted} />
           </TouchableOpacity>
         </View>

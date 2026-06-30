@@ -10,6 +10,7 @@ import { useData, Order } from '@/context/DataContext';
 import { useCart } from '@/context/CartContext';
 import { haptics } from '@/lib/haptics';
 import { ReviewModal } from '@/components/ReviewModal';
+import { useAuth } from '@/context/AuthContext';
 
 const STATUS_CONFIG_MAP = {
   pending: { labelKey: 'orders.statusPending', color: '#FFB800', icon: 'time-outline' as const },
@@ -95,7 +96,7 @@ function OrderCard({ order, onReviewPress }: CardProps) {
           <Ionicons name={status.icon} size={13} color={status.color} />
           <Text style={[styles.statusText, { color: status.color }]}>{t(status.labelKey as any)}</Text>
         </View>
-        <Text style={[styles.total, { color: colors.foreground }]}>${order.total.toFixed(2)}</Text>
+        <Text style={[styles.total, { color: colors.foreground }]}>€{order.total.toFixed(2)}</Text>
       </View>
 
       {/* Dynamic Actions */}
@@ -143,6 +144,7 @@ export default function OrdersScreen() {
   const colors = useColors();
   const { t } = usePreferences();
   const { orders, restaurants } = useData();
+  const { isGuestMode } = useAuth();
   const insets = useSafeAreaInsets();
   const topPadding = Platform.OS === 'web' ? 67 : insets.top;
 
@@ -150,6 +152,27 @@ export default function OrdersScreen() {
   const reviewingRestaurant = reviewOrder
     ? restaurants.find((r) => r.id === reviewOrder.restaurantId)
     : null;
+
+  if (isGuestMode) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={[styles.header, { paddingTop: topPadding + 12, backgroundColor: colors.card }]}>
+          <Text style={[styles.title, { color: colors.foreground }]}>{t('orders.title')}</Text>
+        </View>
+        <View style={styles.empty}>
+          <Ionicons name="lock-closed-outline" size={56} color={colors.muted} />
+          <Text style={[styles.emptyTitle, { color: colors.foreground }]}>{t('orders.guestTitle' as any)}</Text>
+          <Text style={[styles.emptyText, { color: colors.muted }]}>{t('orders.guestDesc' as any)}</Text>
+          <TouchableOpacity
+            onPress={() => { haptics.medium(); router.push('/auth'); }}
+            style={[styles.browseBtn, { backgroundColor: colors.primary }]}
+          >
+            <Text style={[styles.browseBtnText, { color: '#fff' }]}>{t('orders.guestBtn' as any)}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>

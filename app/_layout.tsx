@@ -13,9 +13,10 @@ import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { queryClient } from '@/lib/queryClient';
 import { PreferencesProvider, usePreferences } from '@/context/PreferencesContext';
 import { DataProvider, useData } from '@/context/DataContext';
-import { useColorScheme } from 'react-native';
+import { useColorScheme, View, Text, Platform, StyleSheet } from 'react-native';
 import { NotificationProvider, useNotification } from '@/context/NotificationContext';
 import { haptics } from '@/lib/haptics';
+import { Ionicons } from '@expo/vector-icons';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -32,7 +33,7 @@ function AppContent() {
 
   const { session, loading: authLoading, isGuestMode } = useAuth();
   const segments = useSegments();
-  const { orders } = useData();
+  const { orders, isOffline } = useData();
   const { showNotification } = useNotification();
   const prevOrdersRef = useRef<any[]>([]);
 
@@ -80,6 +81,12 @@ function AppContent() {
   return (
     <KeyboardProvider>
       <StatusBar style={statusStyle} />
+      {isOffline && (
+        <View style={layoutStyles.offlineBanner}>
+          <Ionicons name="cloud-offline-outline" size={16} color="#fff" />
+          <Text style={layoutStyles.offlineText}>No internet connection — showing cached data</Text>
+        </View>
+      )}
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="restaurant/[id]" options={{ animation: 'slide_from_right' }} />
@@ -98,6 +105,23 @@ function AppContent() {
   );
 }
 
+const layoutStyles = StyleSheet.create({
+  offlineBanner: {
+    backgroundColor: '#FF3B30',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    zIndex: 999,
+  },
+  offlineText: {
+    color: '#fff',
+    fontSize: 13,
+    fontFamily: 'Nunito_600SemiBold',
+  },
+});
+
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
     Nunito_400Regular,
@@ -114,25 +138,34 @@ export default function RootLayout() {
 
   if (!fontsLoaded && !fontError) return null;
 
+  const webOuter: any = Platform.OS === 'web'
+    ? { flex: 1, backgroundColor: '#111', alignItems: 'center' as const }
+    : { flex: 1 };
+  const webInner: any = Platform.OS === 'web'
+    ? { flex: 1, width: '100%', maxWidth: 480, overflow: 'hidden', boxShadow: '0 0 60px rgba(0,0,0,0.4)' }
+    : { flex: 1 };
+
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
-        <ErrorBoundary>
-          <QueryClientProvider client={queryClient}>
-            <PreferencesProvider>
-              <DataProvider>
-                <NotificationProvider>
-                  <AuthProvider>
-                    <CartProvider>
-                      <AppContent />
-                    </CartProvider>
-                  </AuthProvider>
-                </NotificationProvider>
-              </DataProvider>
-            </PreferencesProvider>
-          </QueryClientProvider>
-        </ErrorBoundary>
-      </SafeAreaProvider>
+    <GestureHandlerRootView style={webOuter}>
+      <View style={webInner}>
+        <SafeAreaProvider>
+          <ErrorBoundary>
+            <QueryClientProvider client={queryClient}>
+              <PreferencesProvider>
+                <DataProvider>
+                  <NotificationProvider>
+                    <AuthProvider>
+                      <CartProvider>
+                        <AppContent />
+                      </CartProvider>
+                    </AuthProvider>
+                  </NotificationProvider>
+                </DataProvider>
+              </PreferencesProvider>
+            </QueryClientProvider>
+          </ErrorBoundary>
+        </SafeAreaProvider>
+      </View>
     </GestureHandlerRootView>
   );
 }

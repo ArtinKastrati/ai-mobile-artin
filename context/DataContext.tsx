@@ -192,6 +192,8 @@ interface DataContextType {
   simulatedRole: UserRole;
   simulatedRestaurantId: string;
   isLoading: boolean;
+  isOffline: boolean;
+  refreshData: () => Promise<void>;
   addMenuItem: (item: Omit<MenuItem, 'id'>) => void;
   updateMenuItem: (item: MenuItem) => void;
   deleteMenuItem: (id: string) => void;
@@ -239,6 +241,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [profileDetails, setProfileDetails] = useState<ProfileDetails>(DEFAULT_PROFILE);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isOffline, setIsOffline] = useState(false);
   const [simulatedRole, setSimulatedRoleState] = useState<UserRole>('client');
   const [simulatedRestaurantId, setSimulatedRestaurantIdState] = useState<string>('1');
 
@@ -333,23 +336,26 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       if (event === 'SIGNED_IN' && session?.user) {
         await fetchUserSpecificData(session.user.id);
       } else if (event === 'SIGNED_OUT') {
-        setOrders(DEFAULT_ORDERS);
+        setOrders([]);
         setFavorites([]);
-        setAddresses(DEFAULT_ADDRESSES);
-        saveToStorage('app_orders', DEFAULT_ORDERS);
+        setAddresses([]);
+        saveToStorage('app_orders', []);
         saveToStorage('app_favorites', []);
-        saveToStorage('app_addresses', DEFAULT_ADDRESSES);
+        saveToStorage('app_addresses', []);
       }
     });
     return () => subscription.unsubscribe();
   }, []);
 
-  // ── Initial load ────────────────────────────────────────────────────────────
+  // ── Initial load + manual refresh ───────────────────────────────────────────
 
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        // Restaurants ─ fetch from Supabase, seed if empty
+  const loadData = useCallback(async () => {
+    try {
+        // Always upsert mock data so new restaurants/items appear immediately
+        await seedRestaurantsToSupabase();
+        await seedMenuItemsToSupabase();
+
+        // Restaurants ─ fetch all from Supabase (includes admin-added ones too)
         const { data: restData, error: restErr } = await supabase
           .from('restaurants')
           .select('*')
@@ -358,26 +364,17 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         if (!restErr && restData && restData.length > 0) {
           setRestaurants(restData.map(mapDbRestaurant));
         } else {
-          await seedRestaurantsToSupabase();
           setRestaurants(RESTAURANTS);
         }
 
-        // Menu items ─ fetch from Supabase, seed if empty
+        // Menu items ─ fetch all from Supabase
         const { data: menuData, error: menuErr } = await supabase
           .from('menu_items')
           .select('*');
 
         if (!menuErr && menuData && menuData.length > 0) {
-          const mapped = menuData.map(mapDbMenuItem);
-          // Merge modifier groups from local mock (source of truth for modifiers)
-          const withMods = mapped.map((item) => {
-            const fresh = MENU_ITEMS.find((m) => m.id === item.id);
-            if (fresh?.modifierGroups) return { ...item, modifierGroups: fresh.modifierGroups };
-            return item;
-          });
-          setMenuItems(withMods);
+          setMenuItems(menuData.map(mapDbMenuItem));
         } else {
-          await seedMenuItemsToSupabase();
           setMenuItems(MENU_ITEMS);
         }
 
@@ -408,12 +405,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           if (!ordersErr && ordersData) {
             setOrders(ordersData.map(mapDbOrder));
           } else {
-            const stored = await AsyncStorage.getItem('app_orders');
-            setOrders(stored ? JSON.parse(stored) : DEFAULT_ORDERS);
+            // Authenticated users always start empty on Supabase failure — never show fake orders
+            setOrders([]);
           }
         } else {
-          const stored = await AsyncStorage.getItem('app_orders');
-          setOrders(stored ? JSON.parse(stored) : DEFAULT_ORDERS);
+          // Guest — no orders
+          setOrders([]);
         }
 
         // Favorites
@@ -468,6 +465,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
       } catch (e) {
         console.error('DataContext: error loading data', e);
+        setIsOffline(true);
         setRestaurants(RESTAURANTS);
         setMenuItems(MENU_ITEMS);
         setOrders(DEFAULT_ORDERS);
@@ -481,9 +479,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       } finally {
         setIsLoading(false);
       }
-    };
-    loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => { loadData(); }, []);
 
   // ── Local storage helper ────────────────────────────────────────────────────
 
@@ -875,6 +874,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       simulatedRole,
       simulatedRestaurantId,
       isLoading,
+      isOffline,
+      refreshData: loadData,
       addMenuItem,
       updateMenuItem,
       deleteMenuItem,

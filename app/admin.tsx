@@ -23,7 +23,7 @@ import { supabase } from '@/lib/supabase';
 import { usePreferences } from '@/context/PreferencesContext';
 import { haptics } from '@/lib/haptics';
 import { useData, Order } from '@/context/DataContext';
-import { Restaurant, MenuItem } from '@/data/mockData';
+import { Restaurant, MenuItem, ModifierGroup } from '@/data/mockData';
 
 type Tab = 'orders' | 'foods' | 'restaurants' | 'users';
 
@@ -65,6 +65,8 @@ export default function AdminScreen() {
   const [activeTab, setActiveTab] = useState<Tab>('orders');
   const [users, setUsers] = useState<Profile[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
+  const [allOrders, setAllOrders] = useState<Order[]>([]);
+  const [loadingOrders, setLoadingOrders] = useState(false);
 
   // Modals visibility states
   const [foodModalVisible, setFoodModalVisible] = useState(false);
@@ -84,8 +86,59 @@ export default function AdminScreen() {
   const [foodDesc, setFoodDesc] = useState('');
   const [foodImage, setFoodImage] = useState('');
   const [foodCategory, setFoodCategory] = useState('Burgers');
+  const [customCategory, setCustomCategory] = useState('');
+  const [showCustomCatInput, setShowCustomCatInput] = useState(false);
   const [foodRestId, setFoodRestId] = useState('');
   const [foodPopular, setFoodPopular] = useState(false);
+  const [foodModifierGroups, setFoodModifierGroups] = useState<ModifierGroup[]>([]);
+
+  // Modifier group helpers
+  const addModifierGroup = () => {
+    setFoodModifierGroups(prev => [
+      ...prev,
+      { title: '', required: false, multiSelect: false, choices: [] },
+    ]);
+  };
+
+  const updateModifierGroup = (idx: number, updates: Partial<ModifierGroup>) => {
+    setFoodModifierGroups(prev =>
+      prev.map((g, i) => (i === idx ? { ...g, ...updates } : g))
+    );
+  };
+
+  const removeModifierGroup = (idx: number) => {
+    setFoodModifierGroups(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const addChoice = (groupIdx: number) => {
+    setFoodModifierGroups(prev =>
+      prev.map((g, i) =>
+        i === groupIdx ? { ...g, choices: [...g.choices, { name: '', price: 0 }] } : g
+      )
+    );
+  };
+
+  const updateChoice = (
+    groupIdx: number,
+    choiceIdx: number,
+    updates: { name?: string; price?: number }
+  ) => {
+    setFoodModifierGroups(prev =>
+      prev.map((g, i) =>
+        i === groupIdx
+          ? { ...g, choices: g.choices.map((c, ci) => (ci === choiceIdx ? { ...c, ...updates } : c)) }
+          : g
+      )
+    );
+  };
+
+  const removeChoice = (groupIdx: number, choiceIdx: number) => {
+    setFoodModifierGroups(prev =>
+      prev.map((g, i) =>
+        i === groupIdx ? { ...g, choices: g.choices.filter((_, ci) => ci !== choiceIdx) } : g
+      )
+    );
+  };
 
   // Restaurant Form Fields
   const [restName, setRestName] = useState('');
@@ -102,16 +155,17 @@ export default function AdminScreen() {
   const [focusedField, setFocusedField] = useState<string | null>(null);
 
   useEffect(() => {
-    // Redirect if they are a regular client, or role is empty
     if (activeRole === 'client' || !activeRole) {
       router.replace('/(tabs)/profile');
       return;
     }
-    // Only super admins should fetch users list from DB
     if (isSuperAdmin) {
       fetchUsers();
     }
-  }, [activeRole, isSuperAdmin]);
+    if (isSuperAdmin || isRestAdmin || isEmployee) {
+      fetchAllOrders();
+    }
+  }, [activeRole, isSuperAdmin, isRestAdmin, isEmployee]);
 
   // Adjust active tab based on permissions when role changes
   useEffect(() => {
@@ -158,6 +212,43 @@ export default function AdminScreen() {
     }
   };
 
+  const fetchAllOrders = async () => {
+    setLoadingOrders(true);
+    try {
+      let query = supabase
+        .from('orders')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (!isSuperAdmin && activeRestaurantId) {
+        query = query.eq('restaurant_id', activeRestaurantId);
+      }
+
+      const { data, error } = await query;
+      if (!error && data) {
+        setAllOrders(data.map((o: any) => ({
+          id: o.id,
+          restaurantId: o.restaurant_id,
+          items: o.items ?? [],
+          itemsRaw: o.items_raw ?? undefined,
+          reviewed: o.reviewed ?? false,
+          total: o.total,
+          status: o.status,
+          date: o.date,
+          addressLabel: o.address_label ?? undefined,
+          addressDetails: o.address_details ?? undefined,
+          discountApplied: o.discount_applied ?? undefined,
+          promoCodeUsed: o.promo_code_used ?? undefined,
+          paymentMethod: o.payment_method ?? undefined,
+        })));
+      }
+    } catch (e) {
+      console.error('Error fetching all orders', e);
+    } finally {
+      setLoadingOrders(false);
+    }
+  };
+
   const openManageUser = (u: Profile) => {
     haptics.light();
     setEditingUser(u);
@@ -201,11 +292,13 @@ export default function AdminScreen() {
     }
   };
 
-  // Display Lists filtered by role & restaurant
+  // Display Lists — admin fetches all orders from Supabase directly
   const displayOrders = useMemo(() => {
+    if (allOrders.length > 0) return allOrders;
+    // Fallback to DataContext orders (user's own) when Supabase fetch hasn't run yet
     if (isSuperAdmin) return orders;
     return orders.filter(o => o.restaurantId === activeRestaurantId);
-  }, [orders, isSuperAdmin, activeRestaurantId]);
+  }, [allOrders, orders, isSuperAdmin, activeRestaurantId]);
 
   const displayFoods = useMemo(() => {
     if (isSuperAdmin) return menuItems;
@@ -214,31 +307,33 @@ export default function AdminScreen() {
 
   // Stats Calculations
   const stats = useMemo(() => {
-    const filteredOrders = isSuperAdmin 
-      ? orders 
-      : orders.filter(o => o.restaurantId === activeRestaurantId);
-      
-    const revenue = filteredOrders.reduce((sum, o) => o.status === 'delivered' ? sum + o.total : sum, 0);
-    const active = filteredOrders.filter(o => o.status !== 'delivered' && o.status !== 'cancelled').length;
+    const src = allOrders.length > 0 ? allOrders : (isSuperAdmin ? orders : orders.filter(o => o.restaurantId === activeRestaurantId));
+    const revenue = src.reduce((sum, o) => o.status === 'delivered' ? sum + o.total : sum, 0);
+    const active = src.filter(o => o.status !== 'delivered' && o.status !== 'cancelled').length;
     return {
-      revenue: `$${revenue.toFixed(2)}`,
+      revenue: `€${revenue.toFixed(2)}`,
       activeOrders: String(active),
       totalRestaurants: isSuperAdmin ? String(restaurants.length) : '1',
     };
-  }, [orders, restaurants, isSuperAdmin, activeRestaurantId]);
+  }, [allOrders, orders, restaurants, isSuperAdmin, activeRestaurantId]);
 
   // Handle Order Status Changer
   const handleOrderStatusPress = (orderId: string, currentStatus: Order['status']) => {
     haptics.medium();
+    const changeStatus = async (status: Order['status']) => {
+      updateOrderStatus(orderId, status);
+      // Update local allOrders immediately for instant UI feedback
+      setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, status } : o));
+    };
     Alert.alert(
       t('orders.status'),
       undefined,
       [
-        { text: t('orders.statusPending'), onPress: () => updateOrderStatus(orderId, 'pending') },
-        { text: t('orders.statusPreparing'), onPress: () => updateOrderStatus(orderId, 'preparing') },
-        { text: t('orders.statusDelivering'), onPress: () => updateOrderStatus(orderId, 'on_the_way') },
-        { text: t('orders.statusCompleted'), onPress: () => updateOrderStatus(orderId, 'delivered') },
-        { text: t('orders.statusCancelled'), onPress: () => updateOrderStatus(orderId, 'cancelled'), style: 'destructive' },
+        { text: t('orders.statusPending'), onPress: () => changeStatus('pending') },
+        { text: t('orders.statusPreparing'), onPress: () => changeStatus('preparing') },
+        { text: t('orders.statusDelivering'), onPress: () => changeStatus('on_the_way') },
+        { text: t('orders.statusCompleted'), onPress: () => changeStatus('delivered') },
+        { text: t('orders.statusCancelled'), onPress: () => changeStatus('cancelled'), style: 'destructive' },
         { text: t('common.cancel'), style: 'cancel' },
       ]
     );
@@ -253,12 +348,15 @@ export default function AdminScreen() {
     setFoodDesc('');
     setFoodImage('');
     setFoodCategory('Burgers');
+    setCustomCategory('');
+    setShowCustomCatInput(false);
     if (isRestAdmin && activeRestaurantId) {
       setFoodRestId(activeRestaurantId);
     } else if (restaurants.length > 0) {
       setFoodRestId(restaurants[0].id);
     }
     setFoodPopular(false);
+    setFoodModifierGroups([]);
     setFoodModalVisible(true);
   };
 
@@ -270,13 +368,25 @@ export default function AdminScreen() {
     setFoodPrice(String(item.price));
     setFoodDesc(item.description);
     setFoodImage(item.imageUrl);
-    setFoodCategory(item.category);
+    const knownCats = ['Burgers', 'Pizzas', 'Chicken', 'Sides', 'Nigiri', 'Rolls', 'Bowls', 'Cakes', 'Coffee', 'Pasta', 'Salads', 'Drinks', 'Desserts', 'Sandwiches', 'Seafood'];
+    if (knownCats.includes(item.category)) {
+      setFoodCategory(item.category);
+      setCustomCategory('');
+      setShowCustomCatInput(false);
+    } else {
+      setFoodCategory(item.category);
+      setCustomCategory(item.category);
+      setShowCustomCatInput(true);
+    }
     if (isRestAdmin && activeRestaurantId) {
       setFoodRestId(activeRestaurantId);
     } else {
       setFoodRestId(item.restaurantId);
     }
     setFoodPopular(!!item.popular);
+    setFoodModifierGroups(
+      item.modifierGroups ? JSON.parse(JSON.stringify(item.modifierGroups)) : []
+    );
     setFoodModalVisible(true);
   };
 
@@ -288,6 +398,15 @@ export default function AdminScreen() {
     }
     haptics.heavy();
     const priceNum = parseFloat(foodPrice) || 0;
+    // Strip out groups/choices with empty titles before saving
+    const cleanedGroups = foodModifierGroups
+      .filter(g => g.title.trim())
+      .map(g => ({
+        ...g,
+        title: g.title.trim(),
+        choices: g.choices.filter(c => c.name.trim()).map(c => ({ ...c, name: c.name.trim() })),
+      }));
+
     const foodPayload = {
       restaurantId: foodRestId,
       name: foodName,
@@ -296,6 +415,7 @@ export default function AdminScreen() {
       imageUrl: foodImage.trim() || 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400&auto=format&fit=crop',
       category: foodCategory,
       popular: foodPopular,
+      modifierGroups: cleanedGroups.length > 0 ? cleanedGroups : undefined,
     };
 
     if (editingFood) {
@@ -403,6 +523,8 @@ export default function AdminScreen() {
       keyExtractor={(o) => o.id}
       contentContainerStyle={styles.list}
       showsVerticalScrollIndicator={false}
+      onRefresh={fetchAllOrders}
+      refreshing={loadingOrders}
       renderItem={({ item }) => {
         const rest = restaurants.find(r => r.id === item.restaurantId);
         const statusColors = {
@@ -435,7 +557,7 @@ export default function AdminScreen() {
             </Text>
             <View style={[styles.cardFooter, { borderTopColor: colors.border }]}>
               <Text style={[styles.footerInfoText, { color: colors.muted }]}>{t('admin.tapToChangeStatus')}</Text>
-              <Text style={[styles.footerPrice, { color: colors.foreground }]}>${item.total.toFixed(2)}</Text>
+              <Text style={[styles.footerPrice, { color: colors.foreground }]}>€{item.total.toFixed(2)}</Text>
             </View>
           </TouchableOpacity>
         );
@@ -472,7 +594,7 @@ export default function AdminScreen() {
                   <Image source={{ uri: item.imageUrl }} style={styles.itemImg} contentFit="cover" />
                   <View style={{ flex: 1, gap: 2 }}>
                     <Text style={[styles.cardTitle, { color: colors.foreground }]} numberOfLines={1}>{item.name}</Text>
-                    <Text style={[styles.cardSub, { color: colors.primary }]} numberOfLines={1}>${item.price.toFixed(2)}</Text>
+                    <Text style={[styles.cardSub, { color: colors.primary }]} numberOfLines={1}>€{item.price.toFixed(2)}</Text>
                     <Text style={[styles.cardSub, { color: colors.muted }]} numberOfLines={1}>{rest?.name || t('admin.unknown')}</Text>
                   </View>
                   <View style={styles.actionButtons}>
@@ -801,22 +923,34 @@ export default function AdminScreen() {
               <View style={styles.formGroup}>
                 <Text style={[styles.formLabel, { color: colors.mutedForeground }]}>{t('admin.category')}</Text>
                 <View style={styles.categoriesSelectContainer}>
-                  {['Burgers', 'Pizzas', 'Sides', 'Nigiri', 'Rolls', 'Bowls', 'Cakes', 'Coffee'].map(cat => (
+                  {['Burgers', 'Pizzas', 'Chicken', 'Sides', 'Nigiri', 'Rolls', 'Bowls', 'Cakes', 'Coffee', 'Pasta', 'Salads', 'Drinks', 'Desserts', 'Sandwiches', 'Seafood'].map(cat => (
                     <TouchableOpacity
                       key={cat}
-                      onPress={() => setFoodCategory(cat)}
-                      style={[
-                        styles.catSelectBtn,
-                        {
-                          backgroundColor: foodCategory === cat ? colors.primary : colors.card,
-                          borderColor: foodCategory === cat ? colors.primary : colors.border,
-                        }
-                      ]}
+                      onPress={() => { setFoodCategory(cat); setShowCustomCatInput(false); setCustomCategory(''); }}
+                      style={[styles.catSelectBtn, { backgroundColor: foodCategory === cat && !showCustomCatInput ? colors.primary : colors.card, borderColor: foodCategory === cat && !showCustomCatInput ? colors.primary : colors.border }]}
                     >
-                      <Text style={{ fontSize: 13, color: foodCategory === cat ? '#fff' : colors.foreground }}>{cat}</Text>
+                      <Text style={{ fontSize: 13, color: foodCategory === cat && !showCustomCatInput ? '#fff' : colors.foreground }}>{cat}</Text>
                     </TouchableOpacity>
                   ))}
+                  {/* Custom category pill */}
+                  <TouchableOpacity
+                    onPress={() => { setShowCustomCatInput(true); setFoodCategory(customCategory || ''); }}
+                    style={[styles.catSelectBtn, { backgroundColor: showCustomCatInput ? colors.primary : colors.card, borderColor: showCustomCatInput ? colors.primary : colors.border, flexDirection: 'row', gap: 4 }]}
+                  >
+                    <Ionicons name="add" size={14} color={showCustomCatInput ? '#fff' : colors.foreground} />
+                    <Text style={{ fontSize: 13, color: showCustomCatInput ? '#fff' : colors.foreground }}>Tjetër</Text>
+                  </TouchableOpacity>
                 </View>
+                {showCustomCatInput && (
+                  <TextInput
+                    style={[styles.formInput, { color: colors.foreground, backgroundColor: colors.background, borderColor: colors.primary, marginTop: 8 }]}
+                    placeholder="Shkruaj kategorinë  p.sh. Chicken"
+                    placeholderTextColor={colors.muted}
+                    value={customCategory}
+                    onChangeText={v => { setCustomCategory(v); setFoodCategory(v); }}
+                    autoFocus
+                  />
+                )}
               </View>
               {!isRestAdmin && (
                 <View style={styles.formGroup}>
@@ -840,6 +974,122 @@ export default function AdminScreen() {
                   </View>
                 </View>
               )}
+              {/* ── Modifier / Customization Groups ── */}
+              <View style={styles.formGroup}>
+                <View style={styles.modGroupHeader}>
+                  <Text style={[styles.formLabel, { color: colors.mutedForeground }]}>CUSTOMIZATION OPTIONS</Text>
+                  <TouchableOpacity onPress={addModifierGroup} style={styles.addGroupBtn}>
+                    <Ionicons name="add-circle" size={18} color={colors.primary} />
+                    <Text style={[styles.addGroupBtnText, { color: colors.primary }]}>Add Group</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {foodModifierGroups.length === 0 ? (
+                  <TouchableOpacity
+                    onPress={addModifierGroup}
+                    style={[styles.emptyGroupBtn, { borderColor: colors.border }]}
+                  >
+                    <Ionicons name="options-outline" size={22} color={colors.muted} />
+                    <Text style={[styles.emptyGroupText, { color: colors.muted }]}>
+                      Shto madhësi, salca, toping…
+                    </Text>
+                  </TouchableOpacity>
+                ) : (
+                  foodModifierGroups.map((group, groupIdx) => (
+                    <View
+                      key={groupIdx}
+                      style={[styles.modGroupCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                    >
+                      {/* Group title row */}
+                      <View style={styles.modGroupTitleRow}>
+                        <TextInput
+                          style={[styles.modGroupTitleInput, { color: colors.foreground, backgroundColor: colors.background, borderColor: colors.border }]}
+                          placeholder="Titulli  p.sh. Zgjedh salcën"
+                          placeholderTextColor={colors.muted}
+                          value={group.title}
+                          onChangeText={v => updateModifierGroup(groupIdx, { title: v })}
+                        />
+                        <TouchableOpacity onPress={() => removeModifierGroup(groupIdx)} style={{ padding: 4 }}>
+                          <Ionicons name="trash-outline" size={18} color={colors.error} />
+                        </TouchableOpacity>
+                      </View>
+
+                      {/* Required / Multi-select toggles */}
+                      <View style={styles.modToggleRow}>
+                        <TouchableOpacity
+                          onPress={() => updateModifierGroup(groupIdx, { required: !group.required })}
+                          style={[
+                            styles.modToggleBtn,
+                            {
+                              backgroundColor: group.required ? `${colors.primary}18` : colors.background,
+                              borderColor: group.required ? colors.primary : colors.border,
+                            },
+                          ]}
+                        >
+                          <Ionicons
+                            name={group.required ? 'checkmark-circle' : 'ellipse-outline'}
+                            size={15}
+                            color={group.required ? colors.primary : colors.muted}
+                          />
+                          <Text style={[styles.modToggleLabel, { color: group.required ? colors.primary : colors.muted }]}>
+                            Required
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => updateModifierGroup(groupIdx, { multiSelect: !group.multiSelect })}
+                          style={[
+                            styles.modToggleBtn,
+                            {
+                              backgroundColor: group.multiSelect ? `${colors.primary}18` : colors.background,
+                              borderColor: group.multiSelect ? colors.primary : colors.border,
+                            },
+                          ]}
+                        >
+                          <Ionicons
+                            name={group.multiSelect ? 'checkmark-circle' : 'ellipse-outline'}
+                            size={15}
+                            color={group.multiSelect ? colors.primary : colors.muted}
+                          />
+                          <Text style={[styles.modToggleLabel, { color: group.multiSelect ? colors.primary : colors.muted }]}>
+                            Multi-select
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      {/* Choice rows */}
+                      {group.choices.map((choice, choiceIdx) => (
+                        <View key={choiceIdx} style={styles.choiceRow}>
+                          <TextInput
+                            style={[styles.choiceNameInput, { color: colors.foreground, backgroundColor: colors.background, borderColor: colors.border }]}
+                            placeholder="Emri i opsionit"
+                            placeholderTextColor={colors.muted}
+                            value={choice.name}
+                            onChangeText={v => updateChoice(groupIdx, choiceIdx, { name: v })}
+                          />
+                          <TextInput
+                            style={[styles.choicePriceInput, { color: colors.foreground, backgroundColor: colors.background, borderColor: colors.border }]}
+                            placeholder="+€0"
+                            placeholderTextColor={colors.muted}
+                            value={choice.price > 0 ? String(choice.price) : ''}
+                            onChangeText={v => updateChoice(groupIdx, choiceIdx, { price: parseFloat(v) || 0 })}
+                            keyboardType="numeric"
+                          />
+                          <TouchableOpacity onPress={() => removeChoice(groupIdx, choiceIdx)}>
+                            <Ionicons name="close-circle-outline" size={20} color={colors.error} />
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+
+                      {/* Add choice */}
+                      <TouchableOpacity onPress={() => addChoice(groupIdx)} style={styles.addChoiceBtn}>
+                        <Ionicons name="add" size={15} color={colors.primary} />
+                        <Text style={[styles.addChoiceBtnText, { color: colors.primary }]}>Add option</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))
+                )}
+              </View>
+
               <View style={[styles.switchGroup, { backgroundColor: colors.card, borderColor: colors.border }]}>
                 <Text style={{ color: colors.foreground, fontSize: 14, fontFamily: 'Nunito_600SemiBold' }}>{t('admin.markAsPopular')}</Text>
                 <Switch value={foodPopular} onValueChange={setFoodPopular} thumbColor={foodPopular ? colors.primary : '#ccc'} trackColor={{ true: colors.primaryLight }} />
@@ -1313,4 +1563,22 @@ const styles = StyleSheet.create({
     borderRadius: 14,
   },
   submitBtnText: { color: '#fff', fontSize: 16, fontFamily: 'Nunito_800ExtraBold' },
+
+  // Modifier groups
+  modGroupHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  addGroupBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  addGroupBtnText: { fontSize: 13, fontFamily: 'Nunito_600SemiBold' },
+  emptyGroupBtn: { borderWidth: 1.5, borderStyle: 'dashed', borderRadius: 12, paddingVertical: 18, alignItems: 'center', gap: 6 },
+  emptyGroupText: { fontSize: 13, fontFamily: 'Nunito_400Regular' },
+  modGroupCard: { borderWidth: 1, borderRadius: 12, padding: 12, marginBottom: 12, gap: 8 },
+  modGroupTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  modGroupTitleInput: { flex: 1, borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7, fontSize: 14, fontFamily: 'Nunito_600SemiBold' },
+  modToggleRow: { flexDirection: 'row', gap: 8 },
+  modToggleBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, borderWidth: 1 },
+  modToggleLabel: { fontSize: 12, fontFamily: 'Nunito_600SemiBold' },
+  choiceRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  choiceNameInput: { flex: 1, borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, fontSize: 13, fontFamily: 'Nunito_400Regular' },
+  choicePriceInput: { width: 64, borderWidth: 1, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 6, fontSize: 13, fontFamily: 'Nunito_400Regular', textAlign: 'center' },
+  addChoiceBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingTop: 2 },
+  addChoiceBtnText: { fontSize: 13, fontFamily: 'Nunito_600SemiBold' },
 });

@@ -17,13 +17,22 @@ import { usePreferences } from '@/context/PreferencesContext';
 import { useData } from '@/context/DataContext';
 import { haptics } from '@/lib/haptics';
 import { ReviewModal } from '@/components/ReviewModal';
+import { useAuth } from '@/context/AuthContext';
 
 export default function OrderTrackingScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { t } = usePreferences();
   const { orders, restaurants } = useData();
+  const { isGuestMode } = useAuth();
   const { id } = useLocalSearchParams<{ id: string }>();
+
+  // Guests cannot track orders — redirect them away
+  useEffect(() => {
+    if (isGuestMode) {
+      router.replace('/auth');
+    }
+  }, [isGuestMode]);
 
   const order = orders.find((o) => o.id === id);
   const restaurant = order ? restaurants.find((r) => r.id === order.restaurantId) : null;
@@ -386,7 +395,7 @@ export default function OrderTrackingScreen() {
           <View style={styles.receiptPriceRow}>
             <Text style={{ color: colors.muted }}>{t('checkout.subtotal')}</Text>
             <Text style={{ color: colors.foreground, fontFamily: 'Nunito_600SemiBold' }}>
-              ${(order.total - (order.promoCodeUsed === 'FREE' ? 0 : (restaurant?.deliveryFee || 0)) + (order.discountApplied || 0)).toFixed(2)}
+              €{(order.total - (order.promoCodeUsed === 'FREE' ? 0 : (restaurant?.deliveryFee || 0)) + (order.discountApplied || 0)).toFixed(2)}
             </Text>
           </View>
 
@@ -394,7 +403,7 @@ export default function OrderTrackingScreen() {
             <View style={styles.receiptPriceRow}>
               <Text style={{ color: colors.success }}>{t('checkout.discount')} ({order.promoCodeUsed})</Text>
               <Text style={{ color: colors.success, fontFamily: 'Nunito_600SemiBold' }}>
-                -${order.discountApplied.toFixed(2)}
+                -€{order.discountApplied.toFixed(2)}
               </Text>
             </View>
           ) : null}
@@ -402,13 +411,13 @@ export default function OrderTrackingScreen() {
           <View style={styles.receiptPriceRow}>
             <Text style={{ color: colors.muted }}>{t('checkout.deliveryFee')}</Text>
             <Text style={{ color: colors.foreground, fontFamily: 'Nunito_600SemiBold' }}>
-              {order.promoCodeUsed === 'FREE' ? t('checkout.free') : `$${(restaurant?.deliveryFee || 0).toFixed(2)}`}
+              {order.promoCodeUsed === 'FREE' ? t('checkout.free') : `€${(restaurant?.deliveryFee || 0).toFixed(2)}`}
             </Text>
           </View>
 
           <View style={[styles.receiptPriceRow, styles.receiptGrandRow]}>
             <Text style={[styles.receiptGrandLabel, { color: colors.foreground }]}>{t('checkout.total')}</Text>
-            <Text style={[styles.receiptGrandValue, { color: colors.primary }]}>${order.total.toFixed(2)}</Text>
+            <Text style={[styles.receiptGrandValue, { color: colors.primary }]}>€{order.total.toFixed(2)}</Text>
           </View>
         </View>
       </ScrollView>

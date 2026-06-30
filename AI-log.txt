@@ -366,4 +366,303 @@ Files modified:
 
 ---
 
+SESSION 14 — Admin Modifier Groups Editor (Customization Options)
+-----------------------------------------------------------------
+
+PROMPT 15 (Feature Request):
+"I have seen something that needs fixing — for example some food like the Classic Smash Burger
+has options that are changeable, but the admin cannot edit those to be able to make things like
+adding a sauce or something else. Can you fix it and can you make it so it can be added to any
+food item?"
+
+Translation: English
+
+Feature implemented:
+
+Admins can now create, edit, and remove fully nested customization option groups (modifier
+groups) for any food item — covering use cases like choose-a-size, pick-a-sauce, add toppings,
+or any other configurable variant. The editor is embedded directly inside the existing food
+modal, accessible from both the "Add Menu Item" and "Edit Menu Item" flows.
+
+Implementation details:
+
+1. State & helpers added to `app/admin.tsx`
+   - `foodModifierGroups: ModifierGroup[]` state mirrors the selected food item's options.
+   - Helper functions: `addModifierGroup`, `updateModifierGroup(idx, updates)`,
+     `removeModifierGroup(idx)`, `addChoice(groupIdx)`,
+     `updateChoice(groupIdx, choiceIdx, updates)`, `removeChoice(groupIdx, choiceIdx)`.
+   - `openAddFood` resets modifier groups to an empty array.
+   - `openEditFood` deep-clones `item.modifierGroups` so edits don't mutate the source object.
+   - `handleFoodSubmit` strips any groups with empty titles and choices with empty names before
+     including the cleaned array in the Supabase payload.
+
+2. UI section added inside the food modal ScrollView
+   - "CUSTOMIZATION OPTIONS" section header with an inline "Add Group" button.
+   - Empty-state dashed-border tap target so admins know the section exists even before adding
+     groups.
+   - Per-group card showing:
+       • Title text input (e.g. "Choose Sauce")
+       • "Required" toggle — pill button that marks the group as mandatory at checkout.
+       • "Multi-select" toggle — allows customers to pick more than one option.
+       • Per-choice rows: option name input + price surcharge input + remove button.
+       • "Add option" link at the bottom of each group.
+       • "Remove group" trash icon in the group header.
+
+3. Data persistence
+   - Modifier groups are serialised as a JSON column (`modifier_groups`) in the `menu_items`
+     Supabase table. The existing `mapDbMenuItem` row mapper already reads this column, so no
+     schema changes were required.
+   - TypeScript types used: `ModifierGroup` / `OptionChoice` from `data/mockData.ts`.
+   - `npx tsc --noEmit` passed with zero errors after all changes.
+
+Files modified:
+  app/admin.tsx    — state, helper functions, modifier-group editor JSX, new StyleSheet entries
+
+---
+
+SESSION 15 — Admin Order Visibility, Guest Mode Orders, Offline Banner & Web Design
+------------------------------------------------------------------------------------
+
+PROMPT 16 (Multi-Fix Request):
+"Fix admin order visibility (admins should see all orders, not just their own), fix offline
+handling, fix guest mode showing fake orders, fix the web design, and anything else that is
+critically missing."
+
+Translation: Albanian / English
+
+Changes implemented:
+
+1. Admin Sees All Customer Orders (app/admin.tsx)
+   Root cause: DataContext fetches orders filtered by the current user's ID, so even a super
+   admin or restaurant admin would only see their own placed orders — not customer orders.
+   Fix: Added `allOrders` state and `fetchAllOrders()` function directly in admin.tsx.
+   Super admins query the full orders table from Supabase with no user filter. Restaurant
+   admins query orders filtered by their restaurant_id. The FlatList uses `onRefresh` /
+   `refreshing` props so admins can pull-to-refresh. Status changes update `allOrders`
+   optimistically (instant UI feedback) then persist via `updateOrderStatus` to Supabase.
+   Stats card (revenue, active orders) now also derives from the full admin order set.
+
+2. Guest Mode Shows Empty Orders Tab (app/(tabs)/orders.tsx)
+   Root cause: Guest users saw the hardcoded DEFAULT_ORDERS (fake demo data) from DataContext,
+   giving the false impression that orders existed.
+   Fix: Added `isGuestMode` check from AuthContext at the top of `OrdersScreen`. When in guest
+   mode, the screen renders a locked-state empty screen with a "Sign In" button that routes
+   to /auth. No fake orders are ever shown to guests.
+
+3. Offline / No-Internet Banner (context/DataContext.tsx, app/_layout.tsx)
+   Root cause: When the device had no internet connection, the app silently fell back to cached
+   mock data with no user-visible indication.
+   Fix: Added `isOffline: boolean` to DataContext. When the initial Supabase data load throws
+   (network unreachable), `isOffline` is set to `true` and exported from the context.
+   In `_layout.tsx`, `AppContent` reads `isOffline` and renders a persistent red banner at the
+   top of the screen: "No internet connection — showing cached data."
+
+4. Web Design — Centered Mobile Container (app/_layout.tsx)
+   Root cause: On web, the app rendered full-width with no constraints, making it look like a
+   stretched mobile app rather than a proper web experience.
+   Fix: Wrapped the entire app in a centered container at the `RootLayout` level. On web,
+   the outer container fills the viewport with a dark (#111) background; the inner content
+   box is capped at maxWidth: 480px, centered horizontally, and has a subtle box-shadow to
+   give a "phone-on-desk" presentation feel. Mobile (iOS/Android) is unaffected.
+
+Files modified:
+  app/admin.tsx              — allOrders state, fetchAllOrders(), optimistic status updates
+  app/(tabs)/orders.tsx      — isGuestMode guard with sign-in empty state
+  context/DataContext.tsx    — isOffline state, exported from context type and value
+  app/_layout.tsx            — offline banner component, web container wrapper
+
+---
+
+SESSION 16 — Pull-to-Refresh, Active Order Widget & UX Hardening
+-----------------------------------------------------------------
+
+PROMPT 17 (UX Improvements):
+"Implement a pull-to-refresh mechanism so that when a user swipes down on the home screen,
+the application re-fetches all data from Supabase without requiring the user to exit and
+re-enter the app. Additionally, the active delivery banner on the home screen should not be
+visible when the user is in guest mode, as guests are unable to place orders."
+
+Translation: Albanian
+
+Changes implemented:
+
+1. Pull-to-Refresh on Home Screen (app/(tabs)/index.tsx, context/DataContext.tsx)
+   Extracted the internal `loadData` function in DataContext to a stable `useCallback` and
+   exposed it as `refreshData` on the context API. The home screen ScrollView now uses a
+   `RefreshControl` component bound to `handleRefresh`, which calls `refreshData` and awaits
+   completion. On finish, an animated pill badge ("U përditësua ✓") fades in at the top of
+   the screen and auto-dismisses after 1.4 seconds, providing clear visual confirmation that
+   a refresh occurred.
+
+2. Active Order Widget Hidden for Guests (app/(tabs)/index.tsx)
+   The `activeOrder` derivation now returns `null` unconditionally when `isGuestMode` is
+   `true`, preventing the widget from rendering. This eliminates the misleading "active
+   delivery" banner that appeared for unauthenticated users browsing in guest mode.
+
+Files modified:
+  context/DataContext.tsx    — loadData promoted to useCallback, exposed as refreshData
+  app/(tabs)/index.tsx       — RefreshControl, animated "U përditësua" pill, guest guard
+
+---
+
+SESSION 17 — Admin Category Expansion & Customization UX
+----------------------------------------------------------
+
+PROMPT 18 (Feature Request):
+"In the food item form within the admin panel, allow administrators to define custom food
+categories beyond the predefined list — for example, a category such as Chicken that does
+not exist in the default set. This should be supported for any food item."
+
+Translation: Albanian
+
+Changes implemented:
+
+1. Expanded Category List
+   The predefined category pills were extended from 8 to 15 entries, adding: Chicken, Pasta,
+   Salads, Drinks, Desserts, Sandwiches, Seafood. This covers the full range of Kosovo
+   restaurant menu types.
+
+2. Custom Category Input
+   A new "＋ Tjetër" pill was added at the end of the category selector. Pressing it reveals
+   an inline TextInput (auto-focused) where the admin can type any free-form category name.
+   The input is pre-populated when editing a food item whose existing category is not in the
+   predefined list, so legacy custom categories are never lost. Saving clears the input and
+   returns to pill selection mode.
+
+Files modified:
+  app/admin.tsx    — customCategory / showCustomCatInput state, "Tjetër" pill, TextInput
+
+---
+
+SESSION 18 — Restaurant & Menu Data Expansion (Kosovo Market)
+-------------------------------------------------------------
+
+PROMPT 19 (Content Request):
+"Populate the application with additional restaurants spanning a broader range of cuisine
+categories, including appropriate food items and prices calibrated for the Kosovo market,
+so that manual data entry through the admin panel is not required for the initial demo."
+
+Translation: Albanian
+
+Changes implemented:
+
+1. Restaurant Catalogue Expanded (data/mockData.ts)
+   Six new restaurants were added, bringing the total to twelve:
+   — Prishtina Döner & Kebab (Turkish • Kebab)
+   — Crispy Wings House (American • Chicken)
+   — La Pasta Fresca (Italian • Pasta)
+   — Al Shawarma Express (Middle Eastern • Shawarma)
+   — Burek & Çaj Shtëpiak (Traditional • Kosovo)
+   — Taverna Kosovare (Traditional • Grill)
+   All restaurants have Kosovo-appropriate delivery fees (€0.50–€1.50) and minimum orders
+   (€2–€8). Existing restaurant descriptions were updated to Albanian.
+
+2. Menu Item Catalogue Expanded
+   64 total menu items (up from 12), with prices reflecting Kosovo's market:
+   coffee €1.00–€2.50, burek €0.90–€1.20, kebab/doner €2.50–€4.00,
+   burgers €3.50–€4.80, pizza €5.50–€7.50, pasta €4.00–€6.50.
+   Modifier groups (size, sauce, spice level, milk type) added to key items.
+
+3. Category Taxonomy Updated
+   CATEGORIES array extended with: chicken, kebab, pasta, traditional.
+   Both EN and SQ translations updated with corresponding labels.
+
+4. Supabase Seeding Strategy Changed
+   loadData now always runs upsert for restaurants and menu items on startup (not only
+   when tables are empty). Admin-added items are preserved since upsert targets by `id`.
+   This ensures the expanded catalogue appears immediately without manual seeding.
+
+Files modified:
+  data/mockData.ts           — 6 new restaurants, 52 new menu items, expanded CATEGORIES
+  context/DataContext.tsx    — unconditional upsert on startup
+  constants/translations.ts  — chicken / kebab / pasta / traditional category labels
+
+---
+
+SESSION 19 — Search Enhancement, Auth UX & Bug Fixes
+------------------------------------------------------
+
+PROMPT 20 (Multi-Fix Request):
+"Extend the search functionality to surface individual food items in addition to restaurants.
+Update the trending category shortcuts to reflect the new cuisine types. Translate the
+remaining English-language placeholders in the admin modifier-group editor to Albanian.
+Investigate and resolve the 'email rate limit exceeded' error that appears during account
+registration."
+
+Translation: Albanian
+
+Changes implemented:
+
+1. Food Item Search (app/(tabs)/search.tsx)
+   The search query now filters both the restaurant list and the menu item catalogue in
+   parallel. Results are displayed in two labelled sections — RESTORANTET and USHQIMET —
+   within a ScrollView. Each dish row shows the item image, name, parent restaurant name,
+   description excerpt, and price. Tapping a dish navigates to the parent restaurant page.
+   Empty and no-results states are preserved.
+
+2. Trending Category Shortcuts Updated
+   TRENDING_KEYS expanded from 6 to 9 entries, adding: chicken, kebab, pasta, traditional,
+   sushi, dessert, coffee — matching the full CATEGORIES taxonomy.
+
+3. Admin Modifier Group UI Translated to Albanian
+   Empty-state prompt: "Shto madhësi, salca, toping…"
+   Group title placeholder: "Titulli p.sh. Zgjedh salcën"
+   Choice name placeholder: "Emri i opsionit"
+   Price field placeholder: "+€0" (currency symbol corrected to €)
+   "Continue as Guest" button on auth screen: "Vazhdo si vizitor"
+
+4. Auth Error Handling Hardened (app/auth.tsx)
+   A `friendlyError()` mapper translates raw Supabase error strings into Albanian:
+   — Rate-limit error → explains cause and provides step-by-step fix (Supabase Dashboard →
+     Authentication → Settings → disable "Enable email confirmations")
+   — Invalid credentials, already registered, weak password, invalid email, network error
+     all map to specific Albanian messages.
+   After a successful signup, the app immediately attempts auto sign-in, so users are
+   logged in without a separate step when email confirmation is disabled in Supabase.
+
+Files modified:
+  app/(tabs)/search.tsx      — food item search, two-section results, updated trending tags
+  app/admin.tsx              — Albanian placeholders in modifier group editor
+  app/auth.tsx               — friendlyError() mapper, auto sign-in after signup
+  constants/translations.ts  — new category keys (EN + SQ)
+
+---
+
+SESSION 20 — Currency Normalisation & Fake Order Removal
+---------------------------------------------------------
+
+PROMPT 21 (Polish & Data Integrity):
+"Ensure the currency symbol displayed throughout the application is consistent with the
+Kosovo market (€ instead of $). Additionally, newly registered users and authenticated
+users with no order history should see an empty orders list rather than the hardcoded
+demo orders that were used for prototyping."
+
+Translation: Albanian
+
+Changes implemented:
+
+1. Currency Symbol Unified to € (app/checkout.tsx, app/orders/[id].tsx,
+   app/(tabs)/orders.tsx, app/restaurant/[id].tsx, app/admin.tsx)
+   Every price display — subtotals, delivery fees, discounts, grand totals, order cards,
+   food item cards, and the admin revenue stat — now renders the € symbol consistently.
+   The "Place Order" button label also reflects the updated symbol.
+
+2. Fake Orders Removed for Authenticated Users (context/DataContext.tsx)
+   The DEFAULT_ORDERS constant (three hard-coded demo orders used during prototyping) is
+   no longer shown to authenticated or guest users. When an authenticated user has no
+   Supabase orders, `orders` is initialised to an empty array. When the SIGNED_OUT event
+   fires, the orders, favorites, and addresses stored in AsyncStorage are cleared to empty
+   arrays rather than being reset to the default demo values. This prevents demo data from
+   leaking into real user sessions across sign-in/sign-out cycles.
+
+Files modified:
+  app/checkout.tsx           — all price displays: $ → €
+  app/orders/[id].tsx        — receipt subtotal, discount, delivery fee, grand total: $ → €
+  app/(tabs)/orders.tsx      — order card total: $ → €
+  app/restaurant/[id].tsx    — delivery fee badge: $ → €
+  app/admin.tsx              — revenue stat, food price, order total: $ → €
+  context/DataContext.tsx    — DEFAULT_ORDERS replaced with [] for auth users and SIGNED_OUT
+
+---
+
 END OF LOG

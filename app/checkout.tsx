@@ -196,7 +196,7 @@ export default function CheckoutScreen() {
                   <Text style={[styles.itemQty, { color: colors.muted, marginTop: 2 }]}>× {item.quantity}</Text>
                 </View>
                 <Text style={[styles.itemPrice, { color: colors.foreground }]}>
-                  ${(singleItemPrice * item.quantity).toFixed(2)}
+                  €{(singleItemPrice * item.quantity).toFixed(2)}
                 </Text>
               </View>
             );
@@ -434,7 +434,7 @@ export default function CheckoutScreen() {
         <View style={[styles.section, { backgroundColor: colors.card }]}>
           <View style={styles.totalRow}>
             <Text style={[styles.totalLabel, { color: colors.muted }]}>{t('checkout.subtotal')}</Text>
-            <Text style={[styles.totalValue, { color: colors.foreground }]}>${total.toFixed(2)}</Text>
+            <Text style={[styles.totalValue, { color: colors.foreground }]}>€{total.toFixed(2)}</Text>
           </View>
 
           {discountValue > 0 ? (
@@ -443,7 +443,7 @@ export default function CheckoutScreen() {
                 {t('checkout.discount')} ({appliedPromo})
               </Text>
               <Text style={[styles.totalValue, { color: colors.success }]}>
-                -${discountValue.toFixed(2)}
+                -€{discountValue.toFixed(2)}
               </Text>
             </View>
           ) : null}
@@ -456,13 +456,13 @@ export default function CheckoutScreen() {
                 { color: deliveryFeeFinal === 0 ? colors.success : colors.foreground },
               ]}
             >
-              {deliveryFeeFinal === 0 ? t('checkout.free') : `$${deliveryFeeFinal.toFixed(2)}`}
+              {deliveryFeeFinal === 0 ? t('checkout.free') : `€${deliveryFeeFinal.toFixed(2)}`}
             </Text>
           </View>
 
           <View style={[styles.totalRow, styles.grandRow, { borderTopColor: colors.border }]}>
             <Text style={[styles.grandLabel, { color: colors.foreground }]}>{t('checkout.total')}</Text>
-            <Text style={[styles.grandValue, { color: colors.primary }]}>${grandTotal.toFixed(2)}</Text>
+            <Text style={[styles.grandValue, { color: colors.primary }]}>€{grandTotal.toFixed(2)}</Text>
           </View>
         </View>
       </ScrollView>
@@ -477,7 +477,7 @@ export default function CheckoutScreen() {
           {loading ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.orderBtnText}>{t('checkout.placeOrder', { total: '$' + grandTotal.toFixed(2) })}</Text>
+            <Text style={styles.orderBtnText}>{t('checkout.placeOrder', { total: '€' + grandTotal.toFixed(2) })}</Text>
           )}
         </TouchableOpacity>
       </View>

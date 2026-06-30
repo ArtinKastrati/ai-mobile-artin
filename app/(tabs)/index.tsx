@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,8 @@ import {
   TouchableOpacity,
   Platform,
   ActivityIndicator,
+  RefreshControl,
+  Animated,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,6 +23,7 @@ import { CartSheet } from '@/components/CartSheet';
 import { CATEGORIES } from '@/data/mockData';
 import { usePreferences } from '@/context/PreferencesContext';
 import { useData } from '@/context/DataContext';
+import { useAuth } from '@/context/AuthContext';
 import { haptics } from '@/lib/haptics';
 import { useNotification } from '@/context/NotificationContext';
 import { useCart } from '@/context/CartContext';
@@ -29,13 +32,30 @@ export default function HomeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { t } = usePreferences();
-  const { restaurants, favorites, orders, isLoading } = useData();
+  const { restaurants, favorites, orders, isLoading, refreshData } = useData();
+  const { isGuestMode } = useAuth();
   const { unreadCount, showNotification } = useNotification();
   const { itemCount } = useCart();
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [cartVisible, setCartVisible] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [showDone, setShowDone] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
   const allRestaurantsY = useRef(0);
+  const refreshBannerOpacity = useRef(new Animated.Value(0)).current;
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await refreshData();
+    setRefreshing(false);
+    // Show "Updated!" pill briefly
+    setShowDone(true);
+    Animated.sequence([
+      Animated.timing(refreshBannerOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+      Animated.delay(1400),
+      Animated.timing(refreshBannerOpacity, { toValue: 0, duration: 300, useNativeDriver: true }),
+    ]).start(() => setShowDone(false));
+  }, [refreshData, refreshBannerOpacity]);
 
   const categoriesList = [
     { id: 'all', name: t('home.categories.all'), icon: 'grid-outline' },
@@ -100,8 +120,8 @@ export default function HomeScreen() {
     scrollRef.current?.scrollTo({ y: allRestaurantsY.current, animated: true });
   };
 
-  // Identify if there is an active order
-  const activeOrder = orders.find(
+  // Identify if there is an active order — never show for guests
+  const activeOrder = isGuestMode ? null : orders.find(
     (o) => o.status === 'pending' || o.status === 'preparing' || o.status === 'on_the_way'
   );
   const activeRest = activeOrder ? restaurants.find((r) => r.id === activeOrder.restaurantId) : null;
@@ -124,7 +144,30 @@ export default function HomeScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
+      {/* Refresh done pill */}
+      {showDone && (
+        <Animated.View style={[styles.refreshPill, { opacity: refreshBannerOpacity, backgroundColor: colors.primary }]}
+          pointerEvents="none"
+        >
+          <Ionicons name="checkmark-circle" size={15} color="#fff" />
+          <Text style={styles.refreshPillText}>U përditësua</Text>
+        </Animated.View>
+      )}
+      <ScrollView
+        ref={scrollRef}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 100 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+            title="Duke u përditësuar..."
+            titleColor={colors.muted}
+          />
+        }
+      >
         {/* Header */}
         <LinearGradient
           colors={[colors.primary, colors.primary + 'D0']}
@@ -321,6 +364,24 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   loadingContainer: { alignItems: 'center', justifyContent: 'center', gap: 12 },
   loadingText: { fontSize: 14, fontFamily: 'Nunito_600SemiBold' },
+  refreshPill: {
+    position: 'absolute',
+    top: 60,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    zIndex: 100,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 6,
+  },
+  refreshPillText: { color: '#fff', fontSize: 13, fontFamily: 'Nunito_700Bold' },
   header: { paddingHorizontal: 20, paddingBottom: 24 },
   headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18 },
   greeting: { fontSize: 22, fontFamily: 'Nunito_800ExtraBold', color: '#fff', marginBottom: 4 },
