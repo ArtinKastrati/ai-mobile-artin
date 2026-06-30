@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Stack } from 'expo-router';
+import { Stack, router, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -9,7 +9,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useFonts, Nunito_400Regular, Nunito_600SemiBold, Nunito_700Bold, Nunito_800ExtraBold } from '@expo-google-fonts/nunito';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { CartProvider } from '@/context/CartContext';
-import { AuthProvider } from '@/context/AuthContext';
+import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { queryClient } from '@/lib/queryClient';
 import { PreferencesProvider, usePreferences } from '@/context/PreferencesContext';
 import { DataProvider, useData } from '@/context/DataContext';
@@ -30,9 +30,20 @@ function AppContent() {
     statusStyle = systemScheme === 'dark' ? 'light' : 'dark';
   }
 
+  const { session, loading: authLoading } = useAuth();
+  const segments = useSegments();
   const { orders } = useData();
   const { showNotification } = useNotification();
   const prevOrdersRef = useRef<any[]>([]);
+
+  // Auth gate: redirect unauthenticated users to the auth screen
+  useEffect(() => {
+    if (authLoading) return;
+    const inAuthScreen = segments[0] === 'auth';
+    if (!session && !inAuthScreen) {
+      router.replace('/auth');
+    }
+  }, [session, authLoading, segments]);
 
   useEffect(() => {
     if (prevOrdersRef.current.length === 0) {

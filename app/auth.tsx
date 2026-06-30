@@ -45,7 +45,7 @@ export default function AuthScreen() {
       if (mode === 'signin') {
         const { error } = await signIn(email, password);
         if (error) Alert.alert(t('auth.signInFailed'), error);
-        else router.back();
+        else router.replace('/(tabs)');
       } else {
         if (!fullName.trim()) {
           Alert.alert(t('common.error'), t('auth.enterFullName'));
@@ -56,7 +56,7 @@ export default function AuthScreen() {
         if (error) Alert.alert(t('auth.signUpFailed'), error);
         else {
           Alert.alert(t('auth.accountCreated'), t('auth.confirmEmail'), [
-            { text: t('common.ok'), onPress: () => router.back() },
+            { text: t('common.ok'), onPress: () => router.replace('/(tabs)') },
           ]);
         }
       }
@@ -72,14 +72,15 @@ export default function AuthScreen() {
     >
       <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
         <View style={[styles.header, { paddingTop: topPadding + 12 }]}>
-          <TouchableOpacity 
+          <TouchableOpacity
             onPress={() => {
               haptics.light();
-              router.back();
-            }} 
-            style={styles.closeBtn}
+              router.replace('/(tabs)');
+            }}
+            style={styles.guestBtn}
           >
-            <Ionicons name="close" size={22} color={colors.foreground} />
+            <Text style={[styles.guestText, { color: colors.muted }]}>Continue as Guest</Text>
+            <Ionicons name="chevron-forward" size={16} color={colors.muted} />
           </TouchableOpacity>
         </View>
 
@@ -200,8 +201,9 @@ export default function AuthScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { paddingHorizontal: 20, paddingBottom: 8 },
-  closeBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+  header: { paddingHorizontal: 20, paddingBottom: 8, alignItems: 'flex-end' },
+  guestBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingVertical: 8, paddingHorizontal: 4 },
+  guestText: { fontSize: 14, fontFamily: 'Nunito_600SemiBold' },
   body: { flex: 1, alignItems: 'center', paddingHorizontal: 28, paddingTop: 20 },
   logoCircle: {
     width: 88,

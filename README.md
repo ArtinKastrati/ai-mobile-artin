@@ -129,15 +129,8 @@ create table public.restaurants (
   description text
 );
 
-alter table public.restaurants enable row level security;
-
--- Anyone can read restaurants
-create policy "Public read" on public.restaurants
-  for select using (true);
-
--- Only admins can write
-create policy "Admin write" on public.restaurants
-  for all using (public.is_admin());
+-- RLS disabled: restaurants are public catalogue data — the app seeds and manages them directly
+alter table public.restaurants disable row level security;
 ```
 
 #### 3. Menu Items
@@ -155,13 +148,8 @@ create table public.menu_items (
   modifier_groups jsonb
 );
 
-alter table public.menu_items enable row level security;
-
-create policy "Public read" on public.menu_items
-  for select using (true);
-
-create policy "Admin write" on public.menu_items
-  for all using (public.is_admin());
+-- RLS disabled: menu items are public catalogue data — the app seeds and manages them directly
+alter table public.menu_items disable row level security;
 ```
 
 #### 4. Orders
@@ -216,8 +204,8 @@ alter table public.reviews enable row level security;
 create policy "Public read" on public.reviews
   for select using (true);
 
-create policy "Authenticated insert" on public.reviews
-  for insert with check (auth.role() = 'authenticated');
+create policy "Anyone can insert reviews" on public.reviews
+  for insert with check (true);
 ```
 
 #### 6. Favorites
