@@ -259,7 +259,7 @@ The app auto-seeds restaurants, menu items, and reviews into Supabase on first l
 
 ## Deployment
 
-Hosted on [Replit](https://replit.com). The app runs as a web SPA via Metro bundler.
+The app runs as a web SPA via Metro bundler.
 
 ---
 
